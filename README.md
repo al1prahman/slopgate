@@ -8,6 +8,8 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> **Status:** MVP in development (Phase 1 of 9). Not yet published to npm — build from source until v0.1.0 ships.
+
 ---
 
 ## Why this exists

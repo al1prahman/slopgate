@@ -23,7 +23,7 @@ The package is build-ready: product goal is sharp, MVP scope is fenced by explic
 
 ## Required Changes Before Build
 
-1. **Verify npm name `slopgate` availability before Phase 9 publish work** — if taken, switch all docs to the fallback (`slopgate-cli` or `@slopgate/cli`) *before* writing hook templates that hardcode the package path.
+1. ~~**Verify npm name `slopgate` availability before Phase 9 publish work**~~ — **RESOLVED (Phase 1):** `slopgate` is available on npm (E404 on lookup, 2026-11-02). Name kept everywhere; fallbacks not needed.
 2. **Decide cache location default** — spec recommends repo-local `.slopgate/cache.db`; the handoff records it as a recommendation. Confirm in Phase 5 before implementing the cache module.
 3. **Windows hook testing must be in the CI matrix from Phase 1** — the spec names git-bash/PowerShell hook quirks as a known risk; adding `windows-latest` to CI on day one avoids a late-stage rewrite of the hook shims.
 

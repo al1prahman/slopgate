@@ -1,0 +1,44 @@
+{
+  "name": "slopgate",
+  "version": "0.1.0",
+  "description": "Git-native security gate that blocks AI coding agents from shipping hallucinated dependencies and leaked secrets",
+  "type": "module",
+  "bin": {
+    "slopgate": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "git-hooks",
+    "security",
+    "supply-chain",
+    "slopsquatting",
+    "ai-agents",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}
