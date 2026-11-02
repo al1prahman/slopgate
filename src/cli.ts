@@ -29,9 +29,16 @@ export function createProgram(): Command {
     .option('--range <range>', 'Scan a git range, e.g. origin/main..HEAD')
     .option('--format <format>', 'Output format: pretty | json', 'pretty')
     .option('--quiet', 'Print only the verdict line')
-    .action(() => {
-      // Implemented in Phase 7 (report + gate)
-      throw new Error('scan is not implemented yet — coming in Phase 7');
+    .option('--offline', 'Use the local cache only; skip registry lookups')
+    .action(async (options: Record<string, unknown>) => {
+      const { scanCommand } = await import('./commands/scan.js');
+      process.exitCode = await scanCommand({
+        ...(typeof options.staged === 'boolean' ? { staged: options.staged } : {}),
+        ...(typeof options.range === 'string' ? { range: options.range } : {}),
+        ...(typeof options.format === 'string' ? { format: options.format } : {}),
+        ...(typeof options.quiet === 'boolean' ? { quiet: options.quiet } : {}),
+        ...(typeof options.offline === 'boolean' ? { offline: options.offline } : {}),
+      });
     });
 
   return program;
