@@ -84,9 +84,9 @@ describe('runScan', () => {
   it('blocks a leaked Anthropic key', async () => {
     const repo = makeRepo();
     commitBase(repo);
-    writeFileSync(join(repo, 'src.ts'), "const key = 'sk-ant-\u0061pi03-AbCdEf1234567890AbCdEf';\n");
+    writeFileSync(join(repo, 'src.ts'), "const key = 'sk-ant-api03-AbCd\u0045f1234567890AbCdEf';\n");
     mkdirSync(join(repo, 'src'), { recursive: true });
-    writeFileSync(join(repo, 'src', 'ai.ts'), "const key = 'sk-ant-\u0061pi03-AbCdEf1234567890AbCdEf';\n");
+    writeFileSync(join(repo, 'src', 'ai.ts'), "const key = 'sk-ant-api03-AbCd\u0045f1234567890AbCdEf';\n");
     git(repo, 'add', '-A');
 
     const result = await runScan({
@@ -125,7 +125,7 @@ describe('runScan', () => {
     const repo = makeRepo();
     commitBase(repo);
     mkdirSync(join(repo, 'test'), { recursive: true });
-    writeFileSync(join(repo, 'test', 'fixture.ts'), "const key = 'sk-ant-\u0061pi03-AbCdEf1234567890AbCdEf';\n");
+    writeFileSync(join(repo, 'test', 'fixture.ts'), "const key = 'sk-ant-api03-AbCd\u0045f1234567890AbCdEf';\n");
     git(repo, 'add', '-A');
 
     const config = configWith({});
@@ -147,7 +147,7 @@ describe('runScan', () => {
     commitBase(repo);
     writeFileSync(
       join(repo, 'legacy.ts'),
-      "// slopgate:ignore-file\nconst key = 'sk-ant-\u0061pi03-AbCdEf1234567890AbCdEf';\n",
+      "// slopgate:ignore-file\nconst key = 'sk-ant-api03-AbCd\u0045f1234567890AbCdEf';\n",
     );
     git(repo, 'add', '-A');
 
