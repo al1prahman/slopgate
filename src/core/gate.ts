@@ -5,7 +5,7 @@ import { extractDepCandidates, type DepCandidate, type FileReader } from './deps
 import { parseDiff } from './diff.js';
 import { createNpmClient, createPypiClient } from './registry/index.js';
 import { RegistryCache, cacheKey } from './registry/cache.js';
-import { suggestPackage } from './baseline.js';
+import { findTyposquatTarget, suggestPackage, type TyposquatTarget } from './baseline.js';
 import { scanSecrets } from './secrets.js';
 import { getRangeDiff, getStagedDiff, readFileAtRef } from './git.js';
 import type { ChangedFile, Finding, ScanResult } from './types.js';
@@ -32,6 +32,38 @@ function notFoundFinding(candidate: DepCandidate): Finding {
     line: candidate.line,
     message: `"${candidate.name}" not found on ${registryLabel}`,
     ...(suggestion ? { suggestion } : {}),
+  };
+}
+
+// A package that exists but is a fresh look-alike of a popular one is the
+// classic slopsquatting shape: the name was never hallucinated, it was
+// seeded. Warn — it does not block, the package is real and may even be
+// legitimate. Returns null when the age is unknown (fail-open) or the
+// package is older than the window.
+function typosquatFinding(
+  candidate: DepCandidate,
+  createdAt: string | null,
+  target: TyposquatTarget | null,
+  maxAgeDays: number,
+): Finding | null {
+  if (!target || !createdAt) {
+    return null;
+  }
+  const created = Date.parse(createdAt);
+  if (Number.isNaN(created)) {
+    return null;
+  }
+  const ageDays = Math.floor((Date.now() - created) / 86_400_000);
+  if (ageDays >= maxAgeDays) {
+    return null;
+  }
+  return {
+    severity: 'warn',
+    rule: 'dep.typosquat',
+    file: candidate.file,
+    line: candidate.line,
+    message: `"${candidate.name}" exists but is ${target.distance} edit(s) from popular "${target.name}" and only ${ageDays} day(s) old — probable typosquat`,
+    suggestion: target.name,
   };
 }
 
@@ -63,6 +95,7 @@ async function scanDeps(
 
   const findings: Finding[] = [];
   let cacheHits = 0;
+  const typosquat = config.deps.typosquat;
 
   try {
     for (const candidate of candidates) {
@@ -75,14 +108,48 @@ async function scanDeps(
         cacheHits += 1;
         if (!cached.exists) {
           findings.push(notFoundFinding(candidate));
+          continue;
+        }
+        // Without a cached age the verdict cannot be judged — skip the
+        // baseline scan entirely rather than paying it for nothing.
+        if (typosquat.enabled && cached.createdAt) {
+          const target = findTyposquatTarget(
+            candidate.name,
+            candidate.ecosystem,
+            typosquat.maxDistance,
+          );
+          const warning = typosquatFinding(
+            candidate,
+            cached.createdAt,
+            target,
+            typosquat.maxAgeDays,
+          );
+          if (warning) {
+            findings.push(warning);
+          }
         }
         continue;
       }
+      // Only look-alikes of popular packages need the packument body, so the
+      // metadata flag is set exactly when the typosquat check could fire.
+      const target = typosquat.enabled
+        ? findTyposquatTarget(candidate.name, candidate.ecosystem, typosquat.maxDistance)
+        : null;
       try {
-        const result = await client.check(candidate.name);
-        cache.set(candidate.ecosystem, candidate.name, result.exists);
+        const result = await client.check(candidate.name, { metadata: target !== null });
+        cache.set(candidate.ecosystem, candidate.name, result.exists, result.createdAt);
         if (!result.exists) {
           findings.push(notFoundFinding(candidate));
+          continue;
+        }
+        const warning = typosquatFinding(
+          candidate,
+          result.createdAt,
+          target,
+          typosquat.maxAgeDays,
+        );
+        if (warning) {
+          findings.push(warning);
         }
       } catch {
         findings.push({

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -12,8 +12,11 @@ function makeRepo(): string {
   return dir;
 }
 
+// findRepoRoot resolves through git, which canonicalizes Windows 8.3 short
+// names (RUNNER~1 -> runneradmin); mkdtemp hands back the short form.
+// Compare canonical paths on both sides.
 function dbPath(repo: string): string {
-  return join(repo, '.slopgate', 'cache.db');
+  return join(realpathSync(repo), '.slopgate', 'cache.db');
 }
 
 function captureStdout(fn: () => void): string {

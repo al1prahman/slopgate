@@ -98,4 +98,34 @@ describe('cli skeleton', () => {
       stdoutSpy.mockRestore();
     }
   });
+
+  it('swallows the node:sqlite ExperimentalWarning but passes others through', async () => {
+    const { filterSqliteWarning } = await import('../../src/cli.js');
+    const original = process.listeners('warning');
+    const passthrough = vi.fn();
+    process.on('warning', passthrough); // captured by the filter as passthrough
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      filterSqliteWarning();
+      // Node 22 wording — no "node:sqlite" substring anywhere in the message.
+      process.emit(
+        'warning',
+        Object.assign(new Error('SQLite is an experimental feature and might change at any time.'), {
+          name: 'ExperimentalWarning',
+        }),
+      );
+      expect(stderrSpy).not.toHaveBeenCalled();
+      process.emit(
+        'warning',
+        Object.assign(new Error('something else is deprecated'), { name: 'DeprecationWarning' }),
+      );
+      expect(passthrough).toHaveBeenCalledTimes(1);
+    } finally {
+      process.removeAllListeners('warning');
+      for (const listener of original) {
+        process.on('warning', listener as (warning: Error) => void);
+      }
+      stderrSpy.mockRestore();
+    }
+  });
 });

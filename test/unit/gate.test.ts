@@ -37,6 +37,28 @@ function registryFake(missing: string[]): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
+// Registry fake with package ages (PyPI-shaped packuments). Names without an
+// age entry exist but expose no creation date.
+function registryFakeWithAges(ages: Record<string, string>, missing: string[] = []): typeof fetch {
+  return vi.fn(async (url: string | URL) => {
+    const raw = String(url).replace(/\/json$/, '').replace(/\/$/, '');
+    const name = decodeURIComponent(raw.split('/').pop() ?? '');
+    const normalized = name.replace(/%2f/gi, '/').toLowerCase();
+    if (missing.some((m) => normalized === m.toLowerCase())) {
+      return new Response(null, { status: 404 });
+    }
+    const created = ages[normalized];
+    const body = created
+      ? JSON.stringify({ releases: { '1.0.0': [{ upload_time_iso_8601: created }] } })
+      : null;
+    return new Response(body, { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
 function configWith(overrides: Partial<SlopgateConfig>): SlopgateConfig {
   return { ...defaultConfig(), ...overrides };
 }
@@ -246,5 +268,174 @@ describe('runScan', () => {
     expect(result.filesScanned).toBe(1);
     expect(result.linesAdded).toBeGreaterThanOrEqual(2);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('warns when an existing package is a fresh look-alike of a popular one', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({ reqeusts: daysAgo(10) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('warn');
+    const finding = result.findings.find((f) => f.rule === 'dep.typosquat');
+    expect(finding).toBeDefined();
+    expect(finding!.severity).toBe('warn');
+    expect(finding!.suggestion).toBe('requests');
+    expect(finding!.message).toMatch(/2 edit/);
+    expect(finding!.message).toMatch(/10 day/);
+  });
+
+  it('does not warn when the look-alike is older than the window', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({ reqeusts: '2020-01-01T00:00:00.000Z' }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+    expect(result.findings).toEqual([]);
+  });
+
+  it('does not warn when the name is far from anything popular', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nbrand-new-pkg==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({ 'brand-new-pkg': daysAgo(1) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+    expect(result.findings).toEqual([]);
+  });
+
+  it('does not warn when the registry exposes no creation date', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({}), // exists, but no age in the packument
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('warns on cache hits too — the age survives the cache', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+    const cachePath = join(repo, '.slopgate', 'cache.db');
+
+    const first = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({ reqeusts: daysAgo(10) }),
+      cachePath,
+    });
+    expect(first.verdict).toBe('warn');
+    expect(first.cacheHits).toBe(0);
+
+    // Second run: registry is DOWN, but the verdict and age are cached.
+    const second = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: vi.fn(async () => {
+        throw new Error('network down');
+      }) as unknown as typeof fetch,
+      cachePath,
+    });
+    expect(second.verdict).toBe('warn');
+    expect(second.cacheHits).toBeGreaterThan(0);
+    expect(second.findings.some((f) => f.rule === 'dep.typosquat')).toBe(true);
+  });
+
+  it('suppresses the typosquat warning for allowlisted packages', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const config = configWith({});
+    config.deps.allowlist = ['reqeusts'];
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFakeWithAges({ reqeusts: daysAgo(10) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('typosquat can be disabled via config', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const config = configWith({});
+    config.deps.typosquat.enabled = false;
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFakeWithAges({ reqeusts: daysAgo(10) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+    expect(result.findings).toEqual([]);
+  });
+
+  it('honors a custom max-age-days window', async () => {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+
+    const config = configWith({});
+    config.deps.typosquat.maxAgeDays = 5;
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFakeWithAges({ reqeusts: daysAgo(10) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass'); // 10 days old, window is 5
   });
 });

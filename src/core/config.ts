@@ -15,6 +15,11 @@ export interface SlopgateConfig {
     customIndex: string[];
     allowlist: string[];
     quarantine: boolean;
+    typosquat: {
+      enabled: boolean;
+      maxDistance: number;
+      maxAgeDays: number;
+    };
   };
   python: {
     unmappedImports: 'warn' | 'ignore';
@@ -40,6 +45,11 @@ export function defaultConfig(): SlopgateConfig {
       customIndex: [],
       allowlist: [],
       quarantine: false,
+      typosquat: {
+        enabled: true,
+        maxDistance: 2,
+        maxAgeDays: 90,
+      },
     },
     python: {
       unmappedImports: 'warn',
@@ -66,6 +76,30 @@ function mergeConfig(base: SlopgateConfig, partial: Record<string, unknown>): Sl
     const customIndex = deps['custom-index'] ?? deps.customIndex;
     if (Array.isArray(customIndex)) merged.deps.customIndex = customIndex.map(String);
     if (typeof deps.quarantine === 'boolean') merged.deps.quarantine = deps.quarantine;
+    const typosquat = deps.typosquat as Record<string, unknown> | undefined;
+    if (typosquat && typeof typosquat === 'object') {
+      if (typeof typosquat.enabled === 'boolean') {
+        merged.deps.typosquat.enabled = typosquat.enabled;
+      }
+      const maxDistance = typosquat['max-distance'] ?? typosquat.maxDistance;
+      if (
+        typeof maxDistance === 'number' &&
+        Number.isInteger(maxDistance) &&
+        maxDistance >= 0 &&
+        maxDistance <= 5
+      ) {
+        merged.deps.typosquat.maxDistance = maxDistance;
+      }
+      const maxAgeDays = typosquat['max-age-days'] ?? typosquat.maxAgeDays;
+      if (
+        typeof maxAgeDays === 'number' &&
+        Number.isInteger(maxAgeDays) &&
+        maxAgeDays > 0 &&
+        maxAgeDays <= 3650
+      ) {
+        merged.deps.typosquat.maxAgeDays = maxAgeDays;
+      }
+    }
     const registries = deps.registries as Record<string, unknown> | undefined;
     if (registries && typeof registries === 'object') {
       if (typeof registries.npm === 'string') merged.deps.registries.npm = registries.npm;

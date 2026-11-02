@@ -1,6 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNpmClient, createPypiClient } from '../../src/core/registry/index.js';
 import { RegistryCache, cacheKey } from '../../src/core/registry/cache.js';
@@ -18,12 +19,12 @@ function fetchReturning(status: number): typeof fetch {
 describe('createNpmClient', () => {
   it('reports existing packages (HTTP 200)', async () => {
     const client = createNpmClient('https://registry.npmjs.org', fetchReturning(200));
-    await expect(client.check('commander')).resolves.toEqual({ exists: true });
+    await expect(client.check('commander')).resolves.toEqual({ exists: true, createdAt: null });
   });
 
   it('reports missing packages (HTTP 404)', async () => {
     const client = createNpmClient('https://registry.npmjs.org', fetchReturning(404));
-    await expect(client.check('reqeusts')).resolves.toEqual({ exists: false });
+    await expect(client.check('reqeusts')).resolves.toEqual({ exists: false, createdAt: null });
   });
 
   it('url-encodes scoped names', async () => {
@@ -40,6 +41,47 @@ describe('createNpmClient', () => {
     const client = createNpmClient('https://registry.npmjs.org', fetchReturning(500));
     await expect(client.check('whatever')).rejects.toThrow();
   });
+
+  it('returns the packument creation date when metadata is requested', async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ time: { created: '2026-10-01T00:00:00.000Z' } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+    const client = createNpmClient('https://registry.npmjs.org', fetchFn);
+    await expect(client.check('fresh-pkg', { metadata: true })).resolves.toEqual({
+      exists: true,
+      createdAt: '2026-10-01T00:00:00.000Z',
+    });
+  });
+
+  it('does not parse the body when metadata is not requested', async () => {
+    // invalid JSON on purpose: status-only checks must never touch the body
+    const fetchFn = vi.fn(
+      async () => new Response('not json', { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = createNpmClient('https://registry.npmjs.org', fetchFn);
+    await expect(client.check('commander')).resolves.toEqual({ exists: true, createdAt: null });
+  });
+
+  it('returns null createdAt when the packument has no time.created', async () => {
+    const fetchFn = vi.fn(
+      async () => new Response(JSON.stringify({ name: 'x' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = createNpmClient('https://registry.npmjs.org', fetchFn);
+    const result = await client.check('x', { metadata: true });
+    expect(result.exists).toBe(true);
+    expect(result.createdAt).toBeNull();
+  });
+
+  it('404 with metadata requested still reports not found', async () => {
+    const client = createNpmClient('https://registry.npmjs.org', fetchReturning(404));
+    await expect(client.check('ghost', { metadata: true })).resolves.toEqual({
+      exists: false,
+      createdAt: null,
+    });
+  });
 });
 
 describe('createPypiClient', () => {
@@ -55,7 +97,21 @@ describe('createPypiClient', () => {
 
   it('reports missing packages (HTTP 404)', async () => {
     const client = createPypiClient('https://pypi.org/pypi', fetchReturning(404));
-    await expect(client.check('reqeusts')).resolves.toEqual({ exists: false });
+    await expect(client.check('reqeusts')).resolves.toEqual({ exists: false, createdAt: null });
+  });
+
+  it('returns the earliest release upload as createdAt', async () => {
+    const body = JSON.stringify({
+      releases: {
+        '1.0.0': [{ upload_time_iso_8601: '2026-09-15T00:00:00.000Z' }],
+        '1.1.0': [{ upload_time_iso_8601: '2026-10-20T00:00:00.000Z' }],
+      },
+    });
+    const fetchFn = vi.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+    const client = createPypiClient('https://pypi.org/pypi', fetchFn);
+    const result = await client.check('fresh-pkg', { metadata: true });
+    expect(result.exists).toBe(true);
+    expect(result.createdAt).toBe('2026-09-15T00:00:00.000Z');
   });
 });
 
@@ -63,7 +119,7 @@ describe('RegistryCache', () => {
   it('stores and retrieves entries', () => {
     const cache = new RegistryCache(join(dir, 'cache.db'));
     cache.set('npm', 'commander', true);
-    expect(cache.get('npm', 'commander')).toEqual({ exists: true });
+    expect(cache.get('npm', 'commander')).toEqual({ exists: true, createdAt: null });
   });
 
   it('returns null for unknown entries', () => {
@@ -89,13 +145,13 @@ describe('RegistryCache', () => {
     });
 
     expect(aged.get('npm', 'ghost')).toBeNull(); // negative entry expired
-    expect(aged.get('npm', 'real')).toEqual({ exists: true }); // positive entry kept
+    expect(aged.get('npm', 'real')).toEqual({ exists: true, createdAt: null }); // positive entry kept
   });
 
   it('persists across instances (same db file)', () => {
     const dbPath = join(dir, 'cache.db');
     new RegistryCache(dbPath).set('pypi', 'flask', true);
-    expect(new RegistryCache(dbPath).get('pypi', 'flask')).toEqual({ exists: true });
+    expect(new RegistryCache(dbPath).get('pypi', 'flask')).toEqual({ exists: true, createdAt: null });
   });
 
   it('stats() counts total, existing, missing, and stale entries', () => {
@@ -126,8 +182,8 @@ describe('RegistryCache', () => {
     ]);
 
     expect(result.size).toBe(3);
-    expect(result.get(cacheKey('npm', 'commander'))).toEqual({ exists: true });
-    expect(result.get(cacheKey('pypi', 'reqeusts'))).toEqual({ exists: false });
+    expect(result.get(cacheKey('npm', 'commander'))).toEqual({ exists: true, createdAt: null });
+    expect(result.get(cacheKey('pypi', 'reqeusts'))).toEqual({ exists: false, createdAt: null });
     expect(result.has(cacheKey('npm', 'never-checked'))).toBe(false);
   });
 
@@ -147,7 +203,7 @@ describe('RegistryCache', () => {
       { ecosystem: 'npm', name: 'ghost' },
     ]);
 
-    expect(result.get(cacheKey('npm', 'real'))).toEqual({ exists: true });
+    expect(result.get(cacheKey('npm', 'real'))).toEqual({ exists: true, createdAt: null });
     expect(result.has(cacheKey('npm', 'ghost'))).toBe(false);
   });
 
@@ -175,12 +231,66 @@ describe('RegistryCache', () => {
     ]);
 
     expect(result.size).toBe(3);
-    expect(result.get(cacheKey('pypi', 'c'))).toEqual({ exists: false });
+    expect(result.get(cacheKey('pypi', 'c'))).toEqual({ exists: false, createdAt: null });
     expect(result.has(cacheKey('pypi', 'd'))).toBe(false);
   });
 
   it('getMany returns an empty map for no entries', () => {
     const cache = new RegistryCache(join(dir, 'cache.db'));
     expect(cache.getMany([]).size).toBe(0);
+  });
+
+  it('stores and returns createdAt alongside the verdict', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'fresh', true, '2026-10-01T00:00:00.000Z');
+    expect(cache.get('npm', 'fresh')).toEqual({
+      exists: true,
+      createdAt: '2026-10-01T00:00:00.000Z',
+    });
+  });
+
+  it('defaults createdAt to null when not provided', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'legacy-call', true);
+    expect(cache.get('npm', 'legacy-call')).toEqual({ exists: true, createdAt: null });
+  });
+
+  it('migrates a pre-typosquat database by adding the created_at column', () => {
+    const dbPath = join(dir, 'old.db');
+    const db = new DatabaseSync(dbPath);
+    db.exec(`CREATE TABLE registry_cache (
+      ecosystem TEXT NOT NULL,
+      name TEXT NOT NULL,
+      exists_flag INTEGER NOT NULL,
+      checked_at INTEGER NOT NULL,
+      PRIMARY KEY (ecosystem, name)
+    )`);
+    db.prepare(
+      'INSERT INTO registry_cache (ecosystem, name, exists_flag, checked_at) VALUES (?, ?, ?, ?)',
+    ).run('npm', 'legacy', 1, Date.now());
+    db.close();
+
+    const cache = new RegistryCache(dbPath);
+    expect(cache.get('npm', 'legacy')).toEqual({ exists: true, createdAt: null });
+    cache.set('npm', 'fresh', true, '2026-10-01T00:00:00.000Z');
+    expect(cache.get('npm', 'fresh')).toEqual({
+      exists: true,
+      createdAt: '2026-10-01T00:00:00.000Z',
+    });
+  });
+
+  it('getMany carries createdAt through', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'commander', true, '2026-10-01T00:00:00.000Z');
+    cache.set('pypi', 'reqeusts', false);
+    const result = cache.getMany([
+      { ecosystem: 'npm', name: 'commander' },
+      { ecosystem: 'pypi', name: 'reqeusts' },
+    ]);
+    expect(result.get(cacheKey('npm', 'commander'))).toEqual({
+      exists: true,
+      createdAt: '2026-10-01T00:00:00.000Z',
+    });
+    expect(result.get(cacheKey('pypi', 'reqeusts'))).toEqual({ exists: false, createdAt: null });
   });
 });

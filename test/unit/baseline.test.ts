@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadBaseline, suggestPackage } from '../../src/core/baseline.js';
+import { findTyposquatTarget, loadBaseline, suggestPackage } from '../../src/core/baseline.js';
 
 describe('loadBaseline', () => {
   it('loads a substantial npm baseline', () => {
@@ -31,5 +31,39 @@ describe('suggestPackage', () => {
 
   it('returns null when nothing is close', () => {
     expect(suggestPackage('zzzzzzzzzzzz', 'npm')).toBeNull();
+  });
+});
+
+describe('findTyposquatTarget', () => {
+  it('finds the popular package a look-alike imitates', () => {
+    expect(findTyposquatTarget('reqeusts', 'pypi', 2)).toEqual({
+      name: 'requests',
+      distance: 2,
+    });
+    expect(findTyposquatTarget('flsk', 'pypi', 2)).toEqual({ name: 'flask', distance: 1 });
+  });
+
+  it('returns null for a name that is itself popular', () => {
+    expect(findTyposquatTarget('requests', 'pypi', 2)).toBeNull();
+    expect(findTyposquatTarget('react', 'npm', 2)).toBeNull();
+  });
+
+  it('returns null when nothing popular is within range', () => {
+    expect(findTyposquatTarget('zzzzzzzzzzzz', 'pypi', 2)).toBeNull();
+  });
+
+  it('normalizes pypi names before comparing', () => {
+    expect(findTyposquatTarget('Flsk', 'pypi', 2)).toEqual({ name: 'flask', distance: 1 });
+  });
+
+  it('respects a tighter distance limit', () => {
+    expect(findTyposquatTarget('reqeusts', 'pypi', 1)).toBeNull(); // 2 edits away
+    expect(findTyposquatTarget('flsk', 'pypi', 1)).toEqual({ name: 'flask', distance: 1 });
+  });
+
+  it('matches the reference levenshtein on known pairs', () => {
+    // spot-checks that the banded DP agrees with the full-matrix version
+    expect(findTyposquatTarget('djanga', 'pypi', 2)).toEqual({ name: 'django', distance: 1 });
+    expect(findTyposquatTarget('numpyy', 'pypi', 2)).toEqual({ name: 'numpy', distance: 1 });
   });
 });

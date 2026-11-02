@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP complete — all 9 build phases done, 140+ tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP complete — all 9 build phases done, 170+ tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -78,6 +78,10 @@ deps:
   custom-index: []         # internal registries to check first
   allowlist: []            # trusted internal package names
   quarantine: false        # hold installs instead of blocking commit
+  typosquat:
+    enabled: true          # warn on young look-alikes of popular packages
+    max-distance: 2        # edits from a popular name (0-5)
+    max-age-days: 90       # packages younger than this look seeded
 python:
   unmapped-imports: warn   # import names with no known package mapping
 ```
@@ -116,8 +120,8 @@ Three design rules keep it fast and quiet:
 
 ## Roadmap
 
-- **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`), CLI, config
-- **v1** — import scanning (JS/Python), typosquat similarity, GitHub Action + SARIF, cache TTL controls
+- **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`) + typosquat warnings, CLI, config
+- **v1** — import scanning (JS/Python), GitHub Action + SARIF, cache TTL controls
 - **v2** — `go.mod` / `Cargo.toml` / `Gemfile`, registry-metadata risk scoring, quarantine mode, MCP server (agents self-check before commit)
 
 ## Contributing

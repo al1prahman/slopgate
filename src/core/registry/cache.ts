@@ -45,16 +45,25 @@ export class RegistryCache {
       checked_at INTEGER NOT NULL,
       PRIMARY KEY (ecosystem, name)
     )`);
+    // Migration: caches written before the typosquat check lack created_at.
+    // The DB is disposable (TTL-bounded), but ALTER is cheap and keeps old
+    // files working instead of forcing a manual cache clear.
+    const columns = this.db.prepare('PRAGMA table_info(registry_cache)').all() as {
+      name: string;
+    }[];
+    if (!columns.some((column) => column.name === 'created_at')) {
+      this.db.exec('ALTER TABLE registry_cache ADD COLUMN created_at TEXT');
+    }
     // Statements are prepared once and reused: preparing per call costs
     // ~100us on node:sqlite, which dominates a warm 500-file scan.
     this.getStmt = this.db.prepare(
-      'SELECT exists_flag, checked_at FROM registry_cache WHERE ecosystem = ? AND name = ?',
+      'SELECT exists_flag, checked_at, created_at FROM registry_cache WHERE ecosystem = ? AND name = ?',
     );
     this.setStmt = this.db.prepare(
-      `INSERT INTO registry_cache (ecosystem, name, exists_flag, checked_at)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO registry_cache (ecosystem, name, exists_flag, checked_at, created_at)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (ecosystem, name)
-       DO UPDATE SET exists_flag = excluded.exists_flag, checked_at = excluded.checked_at`,
+       DO UPDATE SET exists_flag = excluded.exists_flag, checked_at = excluded.checked_at, created_at = excluded.created_at`,
     );
     this.statsStmt = this.db.prepare(
       `SELECT COUNT(*) AS total,
@@ -71,9 +80,9 @@ export class RegistryCache {
     this.now = options.now ?? (() => Date.now());
   }
 
-  get(ecosystem: string, name: string): { exists: boolean } | null {
+  get(ecosystem: string, name: string): { exists: boolean; createdAt: string | null } | null {
     const row = this.getStmt.get(ecosystem, name) as
-      | { exists_flag: number; checked_at: number }
+      | { exists_flag: number; checked_at: number; created_at: string | null }
       | undefined;
     if (!row) {
       return null;
@@ -82,19 +91,21 @@ export class RegistryCache {
     if (this.now() - row.checked_at > ttl) {
       return null;
     }
-    return { exists: row.exists_flag === 1 };
+    return { exists: row.exists_flag === 1, createdAt: row.created_at ?? null };
   }
 
-  set(ecosystem: string, name: string, exists: boolean): void {
-    this.setStmt.run(ecosystem, name, exists ? 1 : 0, this.now());
+  set(ecosystem: string, name: string, exists: boolean, createdAt: string | null = null): void {
+    this.setStmt.run(ecosystem, name, exists ? 1 : 0, this.now(), createdAt);
   }
 
   // node:sqlite costs ~100us per statement round-trip on current Node, so a
   // warm 1500-dep diff would spend ~170ms on individual gets. One batched
   // query per chunk brings the whole lookup down to a few milliseconds.
   // Expired entries are filtered here, same rule as get().
-  getMany(entries: readonly { ecosystem: string; name: string }[]): Map<string, { exists: boolean }> {
-    const result = new Map<string, { exists: boolean }>();
+  getMany(
+    entries: readonly { ecosystem: string; name: string }[],
+  ): Map<string, { exists: boolean; createdAt: string | null }> {
+    const result = new Map<string, { exists: boolean; createdAt: string | null }>();
     const unique = new Map<string, { ecosystem: string; name: string }>();
     for (const entry of entries) {
       const key = cacheKey(entry.ecosystem, entry.name);
@@ -113,7 +124,7 @@ export class RegistryCache {
       const placeholders = chunk.map(() => '(?, ?)').join(', ');
       const rows = this.db
         .prepare(
-          `SELECT ecosystem, name, exists_flag, checked_at FROM registry_cache
+          `SELECT ecosystem, name, exists_flag, checked_at, created_at FROM registry_cache
            WHERE (ecosystem, name) IN (VALUES ${placeholders})`,
         )
         .all(...params) as {
@@ -121,13 +132,17 @@ export class RegistryCache {
         name: string;
         exists_flag: number;
         checked_at: number;
+        created_at: string | null;
       }[];
       for (const row of rows) {
         const ttl = row.exists_flag === 1 ? this.positiveTtlMs : this.negativeTtlMs;
         if (now - row.checked_at > ttl) {
           continue;
         }
-        result.set(cacheKey(row.ecosystem, row.name), { exists: row.exists_flag === 1 });
+        result.set(cacheKey(row.ecosystem, row.name), {
+          exists: row.exists_flag === 1,
+          createdAt: row.created_at ?? null,
+        });
       }
     }
     return result;

@@ -30,6 +30,14 @@ describe('defaultConfig', () => {
     expect(config.deps.registries.npm).toBe('https://registry.npmjs.org');
     expect(config.deps.registries.pypi).toBe('https://pypi.org/pypi');
   });
+
+  it('enables the typosquat check with sensible defaults', () => {
+    expect(defaultConfig().deps.typosquat).toEqual({
+      enabled: true,
+      maxDistance: 2,
+      maxAgeDays: 90,
+    });
+  });
 });
 
 describe('loadConfig', () => {
@@ -106,6 +114,33 @@ describe('loadConfig', () => {
     const config = loadConfig(repoRoot);
     expect(config.mode).toBe('block'); // invalid mode falls back to default
     expect(config.deps.registries.npm).toBe('https://registry.npmjs.org');
+  });
+
+  it('reads typosquat settings (kebab-case and camelCase)', () => {
+    writeFileSync(
+      join(repoRoot, '.slopgate.yml'),
+      [
+        'deps:',
+        '  typosquat:',
+        '    enabled: false',
+        '    max-distance: 1',
+        '    maxAgeDays: 30',
+      ].join('\n'),
+    );
+
+    const config = loadConfig(repoRoot);
+    expect(config.deps.typosquat).toEqual({ enabled: false, maxDistance: 1, maxAgeDays: 30 });
+  });
+
+  it('ignores out-of-range typosquat values', () => {
+    writeFileSync(
+      join(repoRoot, '.slopgate.yml'),
+      ['deps:', '  typosquat:', '    max-distance: 99', '    max-age-days: -5'].join('\n'),
+    );
+
+    const config = loadConfig(repoRoot);
+    expect(config.deps.typosquat.maxDistance).toBe(2); // falls back to default
+    expect(config.deps.typosquat.maxAgeDays).toBe(90);
   });
 });
 

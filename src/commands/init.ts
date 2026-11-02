@@ -53,6 +53,10 @@ deps:
   custom-index: []         # internal registries checked first
   allowlist: []            # trusted internal package names
   quarantine: false        # hold installs instead of blocking (v2)
+  typosquat:
+    enabled: true          # warn on young look-alikes of popular packages
+    max-distance: 2        # edits from a popular name (0-5)
+    max-age-days: 90       # packages younger than this look seeded
 
 python:
   unmapped-imports: warn   # warn | ignore (v1)

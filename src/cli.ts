@@ -80,15 +80,16 @@ export function run(argv: string[]): void {
   createProgram().parse(argv);
 }
 
-// node:sqlite keeps its experimental label through Node 26 and prints an
-// ExperimentalWarning to stderr on first import. A hook that runs on every
-// commit must not spam stderr, so swallow exactly that warning and let every
-// other warning through untouched.
-function filterSqliteWarning(): void {
+// node:sqlite emits an ExperimentalWarning on first import (still labeled
+// experimental on Node 22; the message reads "SQLite is an experimental
+// feature..." and never contains the literal module specifier). A hook that
+// runs on every commit must not spam stderr, so swallow exactly that warning
+// and let every other warning through untouched.
+export function filterSqliteWarning(): void {
   const passthrough = process.listeners('warning');
   process.removeAllListeners('warning');
   process.on('warning', (warning) => {
-    if (warning.name === 'ExperimentalWarning' && warning.message.includes('node:sqlite')) {
+    if (warning.name === 'ExperimentalWarning' && /sqlite/i.test(warning.message)) {
       return;
     }
     for (const listener of passthrough) {
