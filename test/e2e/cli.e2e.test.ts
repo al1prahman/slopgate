@@ -230,4 +230,41 @@ describe('slopgate e2e', () => {
     expect(commit.status).toBe(0);
     expect(commit.stdout + commit.stderr).toContain('clean. commit allowed.');
   });
+
+  it('flags an agent-authored commit in a range scan', () => {
+    stage('src/base.ts', 'export const base = 1;\n');
+    spawnSync('git', ['commit', '-m', 'base'], { cwd: repo, stdio: 'ignore' });
+    stage('src/util.ts', 'export const add = (a: number, b: number): number => a + b;\n');
+    spawnSync(
+      'git',
+      [
+        'commit',
+        '-m',
+        'add util\n\n🤖 Generated with Claude Code (https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>',
+      ],
+      { cwd: repo, stdio: 'ignore' },
+    );
+
+    const run = cli(['scan', '--range', 'HEAD~1..HEAD', '--offline']);
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain('agent-authored commit');
+    expect(run.stdout).toContain('🤖 Generated with Claude Code');
+    expect(run.stdout).toContain('clean. commit allowed.');
+  });
+
+  it('prints no agent banner for a human-authored range scan', () => {
+    stage('src/base.ts', 'export const base = 1;\n');
+    spawnSync('git', ['commit', '-m', 'base'], { cwd: repo, stdio: 'ignore' });
+    stage('src/util.ts', 'export const add = (a: number, b: number): number => a + b;\n');
+    spawnSync('git', ['commit', '-m', 'add util\n\nCo-Authored-By: Jane Doe <jane@example.com>'], {
+      cwd: repo,
+      stdio: 'ignore',
+    });
+
+    const run = cli(['scan', '--range', 'HEAD~1..HEAD', '--offline']);
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).not.toContain('agent-authored');
+  });
 });

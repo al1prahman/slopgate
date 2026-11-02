@@ -35,6 +35,15 @@ describe('initCommand', () => {
     expect(prePush).toContain('--range');
   });
 
+  it('scaffolds a .slopgate.yml with the agent section', () => {
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    const config = readFileSync(join(repo, '.slopgate.yml'), 'utf8');
+    expect(config).toContain('agent:');
+    expect(config).toContain('enabled: true');
+  });
+
   it('is idempotent — running twice does not duplicate the managed block', () => {
     const repo = makeRepo();
     initCommand({ cwd: repo });

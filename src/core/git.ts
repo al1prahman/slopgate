@@ -33,6 +33,22 @@ export function getRangeDiff(cwd: string, range: string): string {
   return git(['diff', range, '-U0'], cwd);
 }
 
+// Commit messages for a range scan (the agent-commit heuristic's input).
+// NUL-separated so bodies containing blank lines survive the split. An
+// invalid range or a repo without commits yields no messages — fail-open,
+// same contract as readFileAtRef.
+export function getCommitMessages(cwd: string, range: string): string[] {
+  try {
+    const out = git(['log', '--format=%B%x00', range], cwd);
+    return out
+      .split('\0')
+      .map((message) => message.trim())
+      .filter((message) => message !== '');
+  } catch {
+    return [];
+  }
+}
+
 export function readFileAtRef(cwd: string, ref: string, path: string): string | null {
   try {
     return git(['show', `${ref}:${path}`], cwd);

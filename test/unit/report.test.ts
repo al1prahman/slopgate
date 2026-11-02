@@ -51,6 +51,27 @@ describe('formatPretty', () => {
     expect(out).toBe('commit blocked. 1 blocking finding(s).');
   });
 
+  it('prints the agent-authorship banner when the signal is set', () => {
+    const out = formatPretty(
+      result({ agentAuthored: true, agentMarkers: ['Co-Authored-By: Claude <noreply@anthropic.com>'] }),
+    );
+    expect(out).toContain('agent-authored commit');
+    expect(out).toContain('Co-Authored-By: Claude <noreply@anthropic.com>');
+    expect(out).toContain('extra scrutiny applied');
+  });
+
+  it('prints no agent banner for human commits', () => {
+    const out = formatPretty(result({ agentAuthored: false, agentMarkers: [] }));
+    expect(out).not.toContain('agent-authored');
+  });
+
+  it('truncates a very long agent marker', () => {
+    const long = `Co-Authored-By: Claude <${'x'.repeat(120)}>`;
+    const out = formatPretty(result({ agentAuthored: true, agentMarkers: [long] }));
+    expect(out).toContain('...');
+    expect(out).not.toContain(long);
+  });
+
   it('emits no ANSI escapes when stdout is not a TTY', () => {
     const out = formatPretty(result({ verdict: 'block', findings: [blockFinding] }));
     expect(out).not.toContain('\u001b[');

@@ -31,4 +31,9 @@ export interface ScanResult {
   readonly cacheHits: number;
   readonly durationMs: number;
   readonly verdict: 'pass' | 'warn' | 'block';
+  // F12: set when the scanned commits carry agent-authorship markers
+  // (Co-Authored-By: Claude, "Generated with ..."). Informational only —
+  // never affects the verdict.
+  readonly agentAuthored?: boolean;
+  readonly agentMarkers?: readonly string[];
 }

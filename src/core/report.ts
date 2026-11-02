@@ -33,6 +33,12 @@ export function formatPretty(result: ScanResult, options: { quiet?: boolean } = 
     `slopgate: scanned ${result.filesScanned} file(s), +${result.linesAdded} added line(s), ${result.durationMs}ms`,
   ];
 
+  if (result.agentAuthored) {
+    const marker = result.agentMarkers?.[0] ?? 'agent marker';
+    const shown = marker.length > 72 ? `${marker.slice(0, 69)}...` : marker;
+    lines.push(dim(`  agent-authored commit (${shown}) — extra scrutiny applied`));
+  }
+
   if (result.findings.length === 0) {
     lines.push('  no findings.');
   }
@@ -139,6 +145,10 @@ export function formatSarif(result: ScanResult): string {
               },
             ],
           })),
+          properties: {
+            agentAuthored: result.agentAuthored ?? false,
+            ...(result.agentMarkers?.length ? { agentMarkers: result.agentMarkers } : {}),
+          },
         },
       ],
     },

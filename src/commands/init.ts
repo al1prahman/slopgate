@@ -63,6 +63,9 @@ python:
 
 imports:
   enabled: true            # scan import statements, not just manifests
+
+agent:
+  enabled: true            # flag agent-authored commits (Co-Authored-By, "Generated with")
 `;
 
 export interface InitOptions {

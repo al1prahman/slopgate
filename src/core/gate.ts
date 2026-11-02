@@ -8,7 +8,8 @@ import { createNpmClient, createPypiClient } from './registry/index.js';
 import { RegistryCache, cacheKey } from './registry/cache.js';
 import { findTyposquatTarget, suggestPackage, type TyposquatTarget } from './baseline.js';
 import { scanSecrets } from './secrets.js';
-import { getRangeDiff, getStagedDiff, readFileAtRef } from './git.js';
+import { getRangeDiff, getStagedDiff, getCommitMessages, readFileAtRef } from './git.js';
+import { detectAgentAuthorship } from './agent.js';
 import type { Finding, ScanResult } from './types.js';
 
 export interface ScanOptions {
@@ -21,6 +22,9 @@ export interface ScanOptions {
   // Pre-fetched diff text; when provided the git spawn is skipped. Lets
   // callers that already hold a diff (CI actions, tests) reuse it.
   diffText?: string;
+  // Pre-fetched commit messages for the agent-commit heuristic; when absent
+  // they are read for range scans (staged diffs have no message yet).
+  commitMessages?: readonly string[];
 }
 
 function notFoundFinding(candidate: DepCandidate): Finding {
@@ -208,6 +212,15 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
     (options.range ? getRangeDiff(repoRoot, options.range) : getStagedDiff(repoRoot));
   const allFiles = parseDiff(diffText);
 
+  // F12: agent-commit heuristic. Range scans read the commit messages in
+  // scope; a staged diff has no message yet, so there is nothing to detect.
+  const agentSignal =
+    config.agent.enabled && options.range
+      ? detectAgentAuthorship(
+          options.commitMessages ?? getCommitMessages(repoRoot, options.range),
+        )
+      : { agentAuthored: false, markers: [] as string[] };
+
   const fileIgnored = new Set<string>();
   for (const file of allFiles) {
     if (file.addedLines.some((added) => parseInlineIgnore(added.content) === 'file')) {
@@ -300,5 +313,7 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
     cacheHits,
     durationMs: Date.now() - started,
     verdict,
+    agentAuthored: agentSignal.agentAuthored,
+    agentMarkers: agentSignal.markers,
   };
 }

@@ -27,6 +27,9 @@ export interface SlopgateConfig {
   imports: {
     enabled: boolean;
   };
+  agent: {
+    enabled: boolean;
+  };
 }
 
 export const CONFIG_FILE_NAME = '.slopgate.yml';
@@ -58,6 +61,9 @@ export function defaultConfig(): SlopgateConfig {
       unmappedImports: 'warn',
     },
     imports: {
+      enabled: true,
+    },
+    agent: {
       enabled: true,
     },
   };
@@ -122,6 +128,10 @@ function mergeConfig(base: SlopgateConfig, partial: Record<string, unknown>): Sl
   const imports = partial.imports as Record<string, unknown> | undefined;
   if (imports && typeof imports === 'object') {
     if (typeof imports.enabled === 'boolean') merged.imports.enabled = imports.enabled;
+  }
+  const agent = partial.agent as Record<string, unknown> | undefined;
+  if (agent && typeof agent === 'object') {
+    if (typeof agent.enabled === 'boolean') merged.agent.enabled = agent.enabled;
   }
   return merged;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatSarif } from '../../src/core/report.js';
 import type { Finding, ScanResult } from '../../src/core/types.js';
 
-function scanResult(findings: Finding[]): ScanResult {
+function scanResult(findings: Finding[], overrides: Partial<ScanResult> = {}): ScanResult {
   const verdict = findings.some((f) => f.severity === 'block')
     ? 'block'
     : findings.some((f) => f.severity === 'warn')
@@ -15,6 +15,7 @@ function scanResult(findings: Finding[]): ScanResult {
     cacheHits: 1,
     durationMs: 12,
     verdict,
+    ...overrides,
   };
 }
 
@@ -139,5 +140,26 @@ describe('formatSarif', () => {
     for (const rule of sarif.runs[0].tool.driver.rules) {
       expect(rule.shortDescription.text).not.toBe('slopgate finding');
     }
+  });
+
+  it('carries the agent-authorship signal in the run property bag', () => {
+    const sarif = JSON.parse(
+      formatSarif(
+        scanResult([], {
+          agentAuthored: true,
+          agentMarkers: ['Co-Authored-By: Claude <noreply@anthropic.com>'],
+        }),
+      ),
+    );
+    expect(sarif.runs[0].properties.agentAuthored).toBe(true);
+    expect(sarif.runs[0].properties.agentMarkers).toEqual([
+      'Co-Authored-By: Claude <noreply@anthropic.com>',
+    ]);
+  });
+
+  it('reports agentAuthored false when the signal is absent', () => {
+    const sarif = JSON.parse(formatSarif(scanResult([])));
+    expect(sarif.runs[0].properties.agentAuthored).toBe(false);
+    expect(sarif.runs[0].properties.agentMarkers).toBeUndefined();
   });
 });

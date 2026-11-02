@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF done — 214 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF + agent-commit detection done — 242 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -29,7 +29,7 @@ Existing tools don't cover this: `gitleaks`/`trufflehog` find secrets genericall
 | 🔑 Secret scan | API keys, tokens, private keys, DB URLs in added lines | ✅ |
 | 📦 Slopsquat firewall | New deps that don't exist in npm/PyPI, or exist but are 1-2 edits from a popular name | ✅ |
 | 🧭 Import scan | Hallucinated `import`/`require` statements in changed files (JS/TS + Python, alias-aware) | ✅ |
-| 🤖 Agent-diff targeting | Extra scrutiny on agent-authored commits | v1 |
+| 🤖 Agent-commit detection | Flags commits written by coding agents (`Co-Authored-By: Claude`, "Generated with") | ✅ |
 | ⚙️ GitHub Action | SARIF annotations on the PR diff + a summary comment | ✅ |
 
 ## Quick start
@@ -87,6 +87,8 @@ python:
   unmapped-imports: warn   # import names with no known package mapping
 imports:
   enabled: true            # scan import statements, not just manifests
+agent:
+  enabled: true            # flag agent-authored commits in range scans
 ```
 
 Manual scans:
@@ -127,6 +129,20 @@ jobs:
 
 Findings land as inline annotations on the diff (via `github/codeql-action/upload-sarif`) and as one upserted comment on the PR. Inputs: `range`, `mode`, `comment`, `token`, `version`.
 
+## Agent-authored commits
+
+Range scans (`--range`, pre-push hook, the GitHub Action) read the commit messages in scope and flag the ones written by a coding agent — the `Co-Authored-By: Claude <noreply@anthropic.com>` trailer, the `🤖 Generated with Claude Code` footer, and the equivalents from Cursor, Copilot, Codex, Gemini, Devin and aider:
+
+```
+slopgate: scanned 3 file(s), +42 added line(s), 38ms
+  agent-authored commit (🤖 Generated with Claude Code) — extra scrutiny applied
+  ⚠ dep.typosquat  requirements.txt:7  [WARN]
+      "expres" exists but is 1 edit(s) from popular "express" and only 3 day(s) old — probable typosquat
+1 warning(s). commit allowed.
+```
+
+The signal is informational: it never changes the verdict on its own. It tells a reviewer that machine-speed code landed in this diff, so the findings above it deserve a harder look. Full marker list rides along in `--format json` and in the SARIF run's property bag. Staged scans have no commit message yet, so the heuristic only applies to range scans. Disable with `agent: { enabled: false }`.
+
 ## How it works
 
 ```
@@ -154,7 +170,7 @@ Three design rules keep it fast and quiet:
 ## Roadmap
 
 - **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`) + typosquat warnings, CLI, config
-- **v1** — ✅ import scanning (JS/Python) · ✅ GitHub Action + SARIF · cache TTL controls
+- **v1** — ✅ import scanning (JS/Python) · ✅ typosquat warnings · ✅ GitHub Action + SARIF · ✅ agent-commit detection · cache TTL controls
 - **v2** — `go.mod` / `Cargo.toml` / `Gemfile`, registry-metadata risk scoring, quarantine mode, MCP server (agents self-check before commit)
 
 ## Contributing

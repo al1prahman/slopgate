@@ -3,7 +3,13 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getRangeDiff, getStagedDiff, gitConfig, readFileAtRef } from '../../src/core/git.js';
+import {
+  getCommitMessages,
+  getRangeDiff,
+  getStagedDiff,
+  gitConfig,
+  readFileAtRef,
+} from '../../src/core/git.js';
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'ignore' });
@@ -61,5 +67,33 @@ describe('git helpers', () => {
     expect(gitConfig(repo, 'core.hooksPath')).toBe('');
     git(repo, 'config', 'core.hooksPath', '.husky');
     expect(gitConfig(repo, 'core.hooksPath')).toBe('.husky');
+  });
+
+  it('getCommitMessages returns full bodies for the range', () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-m', 'base');
+
+    writeFileSync(join(repo, 'a.txt'), 'one\ntwo\n');
+    git(repo, 'add', '-A');
+    execFileSync('git', ['commit', '-m', 'second\n\nCo-Authored-By: Claude <noreply@anthropic.com>'], {
+      cwd: repo,
+      stdio: 'ignore',
+    });
+
+    const messages = getCommitMessages(repo, 'HEAD~1..HEAD');
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('second');
+    expect(messages[0]).toContain('Co-Authored-By: Claude <noreply@anthropic.com>');
+  });
+
+  it('getCommitMessages returns an empty list for an invalid range', () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-m', 'base');
+
+    expect(getCommitMessages(repo, 'no-such-ref..HEAD')).toEqual([]);
   });
 });

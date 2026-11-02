@@ -628,3 +628,97 @@ describe('runScan — import scanning', () => {
     expect(finding!.message).toContain('"express"');
   });
 });
+
+describe('runScan — agent-commit heuristic (F12)', () => {
+  function agentRepo(message: string): string {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nflask==3.0.0\n');
+    git(repo, 'add', '-A');
+    execFileSync('git', ['commit', '-m', message], { cwd: repo, stdio: 'ignore' });
+    return repo;
+  }
+
+  const agentMessage = 'add flask\n\n🤖 Generated with Claude Code (https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n';
+
+  it('flags a range scan whose commits carry agent markers', async () => {
+    const repo = agentRepo(agentMessage);
+
+    const result = await runScan({
+      repoRoot: repo,
+      range: 'HEAD~1..HEAD',
+      config: defaultConfig(),
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.agentAuthored).toBe(true);
+    expect(result.agentMarkers).toContain('Co-Authored-By: Claude <noreply@anthropic.com>');
+    // The signal is informational — it never changes the verdict.
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('does not flag human commits in a range scan', async () => {
+    const repo = agentRepo('add flask\n\nCo-Authored-By: Jane Doe <jane@example.com>\n');
+
+    const result = await runScan({
+      repoRoot: repo,
+      range: 'HEAD~1..HEAD',
+      config: defaultConfig(),
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.agentAuthored).toBe(false);
+    expect(result.agentMarkers).toEqual([]);
+  });
+
+  it('stays silent for staged scans (no commit message yet)', async () => {
+    const repo = agentRepo(agentMessage);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nflask==3.0.0\nclick==8.1.0\n');
+    git(repo, 'add', '-A');
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.agentAuthored).toBe(false);
+  });
+
+  it('can be disabled via agent.enabled', async () => {
+    const repo = agentRepo(agentMessage);
+
+    const config = configWith({});
+    config.agent.enabled = false;
+
+    const result = await runScan({
+      repoRoot: repo,
+      range: 'HEAD~1..HEAD',
+      config,
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.agentAuthored).toBe(false);
+  });
+
+  it('accepts pre-fetched commit messages without spawning git log', async () => {
+    const repo = agentRepo('add flask');
+
+    const result = await runScan({
+      repoRoot: repo,
+      range: 'HEAD~1..HEAD',
+      config: defaultConfig(),
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+      commitMessages: ['add flask\n\nCo-Authored-By: Cursor <agent@cursor.com>\n'],
+    });
+
+    expect(result.agentAuthored).toBe(true);
+    expect(result.agentMarkers).toEqual(['Co-Authored-By: Cursor <agent@cursor.com>']);
+  });
+});
