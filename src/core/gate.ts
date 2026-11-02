@@ -4,7 +4,7 @@ import { isIgnoredPath, parseInlineIgnore, type SlopgateConfig } from './config.
 import { extractDepCandidates, type DepCandidate, type FileReader } from './deps.js';
 import { parseDiff } from './diff.js';
 import { createNpmClient, createPypiClient } from './registry/index.js';
-import { RegistryCache } from './registry/cache.js';
+import { RegistryCache, cacheKey } from './registry/cache.js';
 import { suggestPackage } from './baseline.js';
 import { scanSecrets } from './secrets.js';
 import { getRangeDiff, getStagedDiff, readFileAtRef } from './git.js';
@@ -17,6 +17,9 @@ export interface ScanOptions {
   config: SlopgateConfig;
   fetchFn?: typeof fetch;
   cachePath?: string;
+  // Pre-fetched diff text; when provided the git spawn is skipped. Lets
+  // callers that already hold a diff (CI actions, tests) reuse it.
+  diffText?: string;
 }
 
 function notFoundFinding(candidate: DepCandidate): Finding {
@@ -56,6 +59,7 @@ async function scanDeps(
     npm: createNpmClient(config.deps.registries.npm, options.fetchFn),
     pypi: createPypiClient(config.deps.registries.pypi, options.fetchFn),
   };
+  const cachedVerdicts = cache.getMany(candidates);
 
   const findings: Finding[] = [];
   let cacheHits = 0;
@@ -66,7 +70,7 @@ async function scanDeps(
         continue;
       }
       const client = clients[candidate.ecosystem];
-      const cached = cache.get(candidate.ecosystem, candidate.name);
+      const cached = cachedVerdicts.get(cacheKey(candidate.ecosystem, candidate.name));
       if (cached) {
         cacheHits += 1;
         if (!cached.exists) {
@@ -101,9 +105,9 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
   const started = Date.now();
   const { repoRoot, config } = options;
 
-  const diffText = options.range
-    ? getRangeDiff(repoRoot, options.range)
-    : getStagedDiff(repoRoot);
+  const diffText =
+    options.diffText ??
+    (options.range ? getRangeDiff(repoRoot, options.range) : getStagedDiff(repoRoot));
   const allFiles = parseDiff(diffText);
 
   const fileIgnored = new Set<string>();

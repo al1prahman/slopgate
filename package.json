@@ -7,7 +7,7 @@
     "slopgate": "dist/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "files": [
     "dist",
@@ -19,6 +19,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest"
   },
   "keywords": [
@@ -37,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.14.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",

@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP in development (Phase 1 of 9). Not yet published to npm — build from source until v0.1.0 ships.
+> **Status:** MVP complete — all 9 build phases done, 140+ tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -88,6 +88,9 @@ Manual scans:
 slopgate scan --staged        # what pre-commit runs
 slopgate scan --range origin/main..HEAD
 slopgate scan --json          # machine-readable
+slopgate scan --offline       # cache-only; registry misses warn (fail-open)
+slopgate cache                # cache stats (path, entries, size)
+slopgate cache clear          # drop the local verdict cache
 ```
 
 ## How it works

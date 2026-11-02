@@ -24,8 +24,13 @@ The package is build-ready: product goal is sharp, MVP scope is fenced by explic
 ## Required Changes Before Build
 
 1. ~~**Verify npm name `slopgate` availability before Phase 9 publish work**~~ — **RESOLVED (Phase 1):** `slopgate` is available on npm (E404 on lookup, 2026-11-02). Name kept everywhere; fallbacks not needed.
-2. **Decide cache location default** — spec recommends repo-local `.slopgate/cache.db`; the handoff records it as a recommendation. Confirm in Phase 5 before implementing the cache module.
-3. **Windows hook testing must be in the CI matrix from Phase 1** — the spec names git-bash/PowerShell hook quirks as a known risk; adding `windows-latest` to CI on day one avoids a late-stage rewrite of the hook shims.
+2. ~~**Decide cache location default**~~ — **RESOLVED (Phase 5):** repo-local `.slopgate/cache.db`, per the handoff recommendation. Per-project isolation, gitignored, zero-ops.
+3. ~~**Windows hook testing must be in the CI matrix from Phase 1**~~ — **RESOLVED (Phase 1):** CI matrix is ubuntu + windows × Node 22/24 from the first commit.
+
+## Deviations Recorded During Build
+
+- **Engines bumped `>=20` → `>=22.13.0`** (Phase 9). The cache uses the built-in `node:sqlite` module instead of `better-sqlite3` — zero native dependencies, no node-gyp, no prebuild matrix. `node:sqlite` does not exist in Node 20 and only runs unflagged from 22.13.0; Node 20 reached end-of-life in April 2026. CI matrix updated to Node 22/24 accordingly. The CLI filters the module's ExperimentalWarning so hooks stay quiet on stderr.
+- **SARIF reporter not in MVP** (per `03-agent-build-handoff.md` scope: "ship pretty+json only"). Reporter interface exists; SARIF is a v1 item alongside the GitHub Action.
 
 ## Optional Improvements
 

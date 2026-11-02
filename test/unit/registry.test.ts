@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNpmClient, createPypiClient } from '../../src/core/registry/index.js';
-import { RegistryCache } from '../../src/core/registry/cache.js';
+import { RegistryCache, cacheKey } from '../../src/core/registry/cache.js';
 
 let dir: string;
 
@@ -96,5 +96,91 @@ describe('RegistryCache', () => {
     const dbPath = join(dir, 'cache.db');
     new RegistryCache(dbPath).set('pypi', 'flask', true);
     expect(new RegistryCache(dbPath).get('pypi', 'flask')).toEqual({ exists: true });
+  });
+
+  it('stats() counts total, existing, missing, and stale entries', () => {
+    const now = 1_000_000_000_000;
+    const ttl = { positiveTtlMs: 24 * 60 * 60 * 1000, negativeTtlMs: 60 * 60 * 1000 };
+    const fresh = new RegistryCache(join(dir, 'cache.db'), { ...ttl, now: () => now });
+    fresh.set('npm', 'commander', true);
+    fresh.set('npm', 'ghost', false);
+
+    const later = new RegistryCache(join(dir, 'cache.db'), {
+      ...ttl,
+      now: () => now + 2 * 60 * 60 * 1000,
+    });
+    expect(later.stats()).toEqual({ total: 2, existing: 1, missing: 1, stale: 1 });
+  });
+
+  it('getMany returns verdicts for a batch of names', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'commander', true);
+    cache.set('pypi', 'flask', true);
+    cache.set('pypi', 'reqeusts', false);
+
+    const result = cache.getMany([
+      { ecosystem: 'npm', name: 'commander' },
+      { ecosystem: 'pypi', name: 'flask' },
+      { ecosystem: 'pypi', name: 'reqeusts' },
+      { ecosystem: 'npm', name: 'never-checked' },
+    ]);
+
+    expect(result.size).toBe(3);
+    expect(result.get(cacheKey('npm', 'commander'))).toEqual({ exists: true });
+    expect(result.get(cacheKey('pypi', 'reqeusts'))).toEqual({ exists: false });
+    expect(result.has(cacheKey('npm', 'never-checked'))).toBe(false);
+  });
+
+  it('getMany skips entries past their TTL', () => {
+    const now = 1_000_000_000_000;
+    const ttl = { positiveTtlMs: 24 * 60 * 60 * 1000, negativeTtlMs: 60 * 60 * 1000 };
+    const fresh = new RegistryCache(join(dir, 'cache.db'), { ...ttl, now: () => now });
+    fresh.set('npm', 'real', true);
+    fresh.set('npm', 'ghost', false);
+
+    const later = new RegistryCache(join(dir, 'cache.db'), {
+      ...ttl,
+      now: () => now + 2 * 60 * 60 * 1000,
+    });
+    const result = later.getMany([
+      { ecosystem: 'npm', name: 'real' },
+      { ecosystem: 'npm', name: 'ghost' },
+    ]);
+
+    expect(result.get(cacheKey('npm', 'real'))).toEqual({ exists: true });
+    expect(result.has(cacheKey('npm', 'ghost'))).toBe(false);
+  });
+
+  it('getMany dedupes repeated names', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'commander', true);
+    const result = cache.getMany([
+      { ecosystem: 'npm', name: 'commander' },
+      { ecosystem: 'npm', name: 'commander' },
+    ]);
+    expect(result.size).toBe(1);
+  });
+
+  it('getMany chunks large batches (chunk size injectable for tests)', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'), { batchChunkSize: 2 });
+    cache.set('pypi', 'a', true);
+    cache.set('pypi', 'b', true);
+    cache.set('pypi', 'c', false);
+
+    const result = cache.getMany([
+      { ecosystem: 'pypi', name: 'a' },
+      { ecosystem: 'pypi', name: 'b' },
+      { ecosystem: 'pypi', name: 'c' },
+      { ecosystem: 'pypi', name: 'd' },
+    ]);
+
+    expect(result.size).toBe(3);
+    expect(result.get(cacheKey('pypi', 'c'))).toEqual({ exists: false });
+    expect(result.has(cacheKey('pypi', 'd'))).toBe(false);
+  });
+
+  it('getMany returns an empty map for no entries', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    expect(cache.getMany([]).size).toBe(0);
   });
 });

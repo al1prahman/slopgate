@@ -73,6 +73,40 @@ describe('loadConfig', () => {
     writeFileSync(join(repoRoot, '.slopgate.yml'), 'mode: [block\n  bad: yaml');
     expect(() => loadConfig(repoRoot)).toThrow(/\.slopgate\.yml/);
   });
+
+  it('returns defaults for an empty config file', () => {
+    writeFileSync(join(repoRoot, '.slopgate.yml'), '');
+    expect(loadConfig(repoRoot)).toEqual(defaultConfig());
+  });
+
+  it('throws when the top level is not a mapping', () => {
+    writeFileSync(join(repoRoot, '.slopgate.yml'), '- one\n- two\n');
+    expect(() => loadConfig(repoRoot)).toThrow(/must contain a YAML mapping/);
+  });
+
+  it('accepts camelCase aliases for kebab-case keys', () => {
+    writeFileSync(
+      join(repoRoot, '.slopgate.yml'),
+      ['deps:', '  customIndex: [https://npm.internal.co]', 'python:', '  unmappedImports: ignore'].join(
+        '\n',
+      ),
+    );
+
+    const config = loadConfig(repoRoot);
+    expect(config.deps.customIndex).toEqual(['https://npm.internal.co']);
+    expect(config.python.unmappedImports).toBe('ignore');
+  });
+
+  it('ignores config values of the wrong type', () => {
+    writeFileSync(
+      join(repoRoot, '.slopgate.yml'),
+      ['mode: 123', 'deps:', '  registries:', '    npm: 456'].join('\n'),
+    );
+
+    const config = loadConfig(repoRoot);
+    expect(config.mode).toBe('block'); // invalid mode falls back to default
+    expect(config.deps.registries.npm).toBe('https://registry.npmjs.org');
+  });
 });
 
 describe('globToRegExp / isIgnoredPath', () => {
@@ -99,6 +133,12 @@ describe('globToRegExp / isIgnoredPath', () => {
   it('returns false when no patterns match', () => {
     expect(isIgnoredPath(['**/*.test.ts'], 'src/app.ts')).toBe(false);
     expect(isIgnoredPath([], 'src/app.ts')).toBe(false);
+  });
+
+  it('? matches exactly one character', () => {
+    const re = globToRegExp('a?c.txt');
+    expect(re.test('abc.txt')).toBe(true);
+    expect(re.test('a/c.txt')).toBe(false);
   });
 });
 

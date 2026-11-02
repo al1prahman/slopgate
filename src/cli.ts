@@ -26,6 +26,22 @@ export function createProgram(): Command {
     });
 
   program
+    .command('cache')
+    .description('Inspect or clear the local registry verdict cache')
+    .argument('[action]', 'stats | clear', 'stats')
+    .action(async (action: string) => {
+      const { cacheCommand } = await import('./commands/cache.js');
+      if (action !== 'stats' && action !== 'clear') {
+        process.stderr.write(
+          `slopgate: unknown cache action "${action}" — expected "stats" or "clear"\n`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      cacheCommand(action);
+    });
+
+  program
     .command('scan')
     .description('Scan a diff for secrets and hallucinated dependencies')
     .option('--staged', 'Scan staged changes (what pre-commit runs)')
@@ -60,7 +76,25 @@ function isMainModule(): boolean {
 }
 
 export function run(argv: string[]): void {
+  filterSqliteWarning();
   createProgram().parse(argv);
+}
+
+// node:sqlite keeps its experimental label through Node 26 and prints an
+// ExperimentalWarning to stderr on first import. A hook that runs on every
+// commit must not spam stderr, so swallow exactly that warning and let every
+// other warning through untouched.
+function filterSqliteWarning(): void {
+  const passthrough = process.listeners('warning');
+  process.removeAllListeners('warning');
+  process.on('warning', (warning) => {
+    if (warning.name === 'ExperimentalWarning' && warning.message.includes('node:sqlite')) {
+      return;
+    }
+    for (const listener of passthrough) {
+      (listener as (warning: Error) => void)(warning);
+    }
+  });
 }
 
 if (isMainModule()) {
