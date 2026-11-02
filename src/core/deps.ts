@@ -56,7 +56,13 @@ function extractManifestDeps(content: string | null): Map<string, string> {
     const value = (parsed as Record<string, unknown>)[section];
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       for (const [name, version] of Object.entries(value as Record<string, unknown>)) {
-        deps.set(name, typeof version === 'string' ? version : '');
+        const spec = typeof version === 'string' ? version : '';
+        // file: and workspace: refs point at local paths, never the public
+        // registry — checking them would produce false "not found" blocks.
+        if (spec.startsWith('file:') || spec.startsWith('workspace:')) {
+          continue;
+        }
+        deps.set(name, spec);
       }
     }
   }

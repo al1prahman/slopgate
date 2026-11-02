@@ -101,6 +101,22 @@ describe('extractDepCandidates', () => {
     ).not.toThrow();
   });
 
+  it('skips file: and workspace: protocol refs (never on the public registry)', () => {
+    const current = JSON.stringify({
+      dependencies: {
+        'local-pkg': 'file:../local-pkg',
+        'monorepo-lib': 'workspace:*',
+        commander: '^15.0.0',
+      },
+    });
+    const files = [changedFile('package.json', '{', '  "dependencies": {', '  }', '}')];
+    const candidates = extractDepCandidates(files, {
+      read: () => current,
+      readAtRef: () => null,
+    });
+    expect(candidates.map((c) => c.name)).toEqual(['commander']);
+  });
+
   it('ignores non-manifest files', () => {
     const files = [changedFile('src/index.ts', "import x from 'yaml';")];
     expect(extractDepCandidates(files, reader)).toEqual([]);

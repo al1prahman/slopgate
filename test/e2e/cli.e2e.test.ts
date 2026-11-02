@@ -175,6 +175,18 @@ describe('slopgate e2e', () => {
     expect(commit.stdout + commit.stderr).toContain('commit blocked');
   });
 
+  it('stays quiet on stderr in a repo with no commits yet', () => {
+    // readFileAtRef runs `git show HEAD:package.json` — on a repo with no
+    // commits git prints "fatal: invalid object name 'HEAD'" unless stderr
+    // is suppressed.
+    stage('package.json', '{\n  "dependencies": {\n    "commander": "^15.0.0"\n  }\n}\n');
+    const run = cli(['scan', '--staged', '--offline']);
+
+    expect(run.status).toBe(1); // registry unreachable → warn (fail-open)
+    expect(run.stderr).not.toContain('fatal:');
+    expect(run.stderr).not.toContain('ExperimentalWarning');
+  });
+
   it('the installed pre-commit hook lets a clean commit through', () => {
     const binDir = join(repo, 'fakebin');
     mkdirSync(binDir, { recursive: true });
