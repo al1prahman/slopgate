@@ -1,0 +1,16 @@
+# deps
+node_modules/
+
+# build
+dist/
+
+# slopgate local cache
+.slopgate/
+
+# logs & OS
+*.log
+.DS_Store
+
+# editor
+.vscode/
+.idea/
