@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createProgram } from '../src/cli.js';
-import { SLOPGATE_VERSION } from '../src/version.js';
+import { createProgram } from '../../src/cli.js';
+import { SLOPGATE_VERSION } from '../../src/version.js';
 
 describe('cli skeleton', () => {
   it('exposes the package name and version', () => {
