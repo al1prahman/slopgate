@@ -14,9 +14,10 @@ function makeRepo(): string {
 
 // findRepoRoot resolves through git, which canonicalizes Windows 8.3 short
 // names (RUNNER~1 -> runneradmin); mkdtemp hands back the short form.
-// Compare canonical paths on both sides.
+// realpathSync.native is the variant that actually expands 8.3 names on
+// Windows (plain realpathSync only resolves symlinks and leaves them).
 function dbPath(repo: string): string {
-  return join(realpathSync(repo), '.slopgate', 'cache.db');
+  return join(realpathSync.native(repo), '.slopgate', 'cache.db');
 }
 
 function captureStdout(fn: () => void): string {
