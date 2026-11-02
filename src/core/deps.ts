@@ -5,6 +5,15 @@ export interface DepCandidate {
   ecosystem: 'npm' | 'pypi';
   file: string;
   line: number;
+  /** 'import' when the candidate came from an import statement, not a manifest. */
+  source?: 'manifest' | 'import';
+  /** The import specifier as written, when it differs from `name`. */
+  importName?: string;
+  /**
+   * Python import with no alias-table entry: the identity mapping is a
+   * guess, so a not-found verdict is a warn (policy-driven), not a block.
+   */
+  unmapped?: boolean;
 }
 
 export interface FileReader {

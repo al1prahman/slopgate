@@ -24,6 +24,9 @@ export interface SlopgateConfig {
   python: {
     unmappedImports: 'warn' | 'ignore';
   };
+  imports: {
+    enabled: boolean;
+  };
 }
 
 export const CONFIG_FILE_NAME = '.slopgate.yml';
@@ -53,6 +56,9 @@ export function defaultConfig(): SlopgateConfig {
     },
     python: {
       unmappedImports: 'warn',
+    },
+    imports: {
+      enabled: true,
     },
   };
 }
@@ -112,6 +118,10 @@ function mergeConfig(base: SlopgateConfig, partial: Record<string, unknown>): Sl
     if (unmapped === 'warn' || unmapped === 'ignore') {
       merged.python.unmappedImports = unmapped;
     }
+  }
+  const imports = partial.imports as Record<string, unknown> | undefined;
+  if (imports && typeof imports === 'object') {
+    if (typeof imports.enabled === 'boolean') merged.imports.enabled = imports.enabled;
   }
   return merged;
 }

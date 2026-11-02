@@ -38,6 +38,10 @@ describe('defaultConfig', () => {
       maxAgeDays: 90,
     });
   });
+
+  it('enables import scanning by default', () => {
+    expect(defaultConfig().imports.enabled).toBe(true);
+  });
 });
 
 describe('loadConfig', () => {
@@ -68,6 +72,8 @@ describe('loadConfig', () => {
         '  ecosystems: [npm]',
         '  allowlist: [my-internal-pkg]',
         '  custom-index: [https://npm.internal.co]',
+        'imports:',
+        '  enabled: false',
       ].join('\n'),
     );
 
@@ -75,6 +81,7 @@ describe('loadConfig', () => {
     expect(config.deps.ecosystems).toEqual(['npm']);
     expect(config.deps.allowlist).toEqual(['my-internal-pkg']);
     expect(config.deps.customIndex).toEqual(['https://npm.internal.co']);
+    expect(config.imports.enabled).toBe(false);
   });
 
   it('throws a helpful error on malformed YAML', () => {

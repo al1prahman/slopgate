@@ -40,10 +40,10 @@ function stage(path: string, content: string): void {
   spawnSync('git', ['add', path], { cwd: repo, stdio: 'ignore' });
 }
 
-function seedCache(entries: Record<string, boolean>): void {
+function seedCache(entries: Record<string, boolean>, ecosystem: 'npm' | 'pypi' = 'pypi'): void {
   const cache = new RegistryCache(join(repo, '.slopgate', 'cache.db'));
   for (const [name, exists] of Object.entries(entries)) {
-    cache.set('pypi', name, exists);
+    cache.set(ecosystem, name, exists);
   }
   cache.close();
 }
@@ -78,11 +78,34 @@ describe('slopgate e2e', () => {
   it('blocks a hallucinated PyPI dep and suggests the real package', () => {
     stage('requirements.txt', 'reqeusts==1.0.0\n');
     seedCache({ reqeusts: false });
+
     const run = cli(['scan', '--staged']);
 
     expect(run.status).toBe(2);
     expect(run.stdout).toContain('"reqeusts" not found on PyPI');
     expect(run.stdout).toContain("did you mean 'requests'?");
+  });
+
+  it('blocks a staged hallucinated npm import', () => {
+    stage('src/app.ts', "import x from 'reqeusts';\n");
+    seedCache({ reqeusts: false }, 'npm');
+
+    const run = cli(['scan', '--staged']);
+
+    expect(run.status).toBe(2);
+    expect(run.stdout).toContain('import.not-found');
+    expect(run.stdout).toContain('import "reqeusts" not found on npm');
+  });
+
+  it('warns — exit 1 — on an unmapped Python import', () => {
+    stage('app/main.py', 'import reqeusts\n');
+    seedCache({ reqeusts: false });
+
+    const run = cli(['scan', '--staged']);
+
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain('import.unmapped');
+    expect(run.stdout).not.toContain('commit blocked');
   });
 
   it('passes a clean staged commit with exit 0', () => {

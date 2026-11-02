@@ -49,7 +49,9 @@ function registryFakeWithAges(ages: Record<string, string>, missing: string[] = 
     }
     const created = ages[normalized];
     const body = created
-      ? JSON.stringify({ releases: { '1.0.0': [{ upload_time_iso_8601: created }] } })
+      ? String(url).includes('npmjs.org')
+        ? JSON.stringify({ time: { created } })
+        : JSON.stringify({ releases: { '1.0.0': [{ upload_time_iso_8601: created }] } })
       : null;
     return new Response(body, { status: 200 });
   }) as unknown as typeof fetch;
@@ -437,5 +439,192 @@ describe('runScan', () => {
     });
 
     expect(result.verdict).toBe('pass'); // 10 days old, window is 5
+  });
+});
+
+describe('runScan — import scanning', () => {
+  function importRepo(files: Record<string, string>): string {
+    const repo = makeRepo();
+    commitBase(repo);
+    for (const [path, content] of Object.entries(files)) {
+      const full = join(repo, path);
+      mkdirSync(join(full, '..'), { recursive: true });
+      writeFileSync(full, content);
+    }
+    git(repo, 'add', '-A');
+    return repo;
+  }
+
+  it('blocks a hallucinated npm import', async () => {
+    const repo = importRepo({ 'src/app.ts': "import x from 'reqeusts';\n" });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake(['reqeusts']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('block');
+    const finding = result.findings.find((f) => f.rule === 'import.not-found');
+    expect(finding).toBeDefined();
+    expect(finding!.file).toBe('src/app.ts');
+    expect(finding!.message).toContain('import "reqeusts"');
+  });
+
+  it('blocks an aliased Python import whose distribution does not exist', async () => {
+    const repo = importRepo({ 'app/main.py': 'from bs4 import BeautifulSoup\n' });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake(['beautifulsoup4']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('block');
+    const finding = result.findings.find((f) => f.rule === 'import.not-found');
+    expect(finding!.message).toContain('import "bs4" (package "beautifulsoup4")');
+  });
+
+  it('passes when an aliased import resolves to a real distribution', async () => {
+    const repo = importRepo({ 'app/main.py': 'from bs4 import BeautifulSoup\n' });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake([]),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('warns — never blocks — on an unmapped Python import', async () => {
+    const repo = importRepo({ 'app/main.py': 'import reqeusts\n' });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake(['reqeusts']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('warn');
+    const finding = result.findings.find((f) => f.rule === 'import.unmapped');
+    expect(finding).toBeDefined();
+    expect(finding!.severity).toBe('warn');
+    expect(finding!.message).toContain('import "reqeusts"');
+  });
+
+  it('warns once per unmapped name across files', async () => {
+    const repo = importRepo({
+      'app/one.py': 'import reqeusts\n',
+      'app/two.py': 'import reqeusts\n',
+    });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFake(['reqeusts']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.findings.filter((f) => f.rule === 'import.unmapped')).toHaveLength(1);
+  });
+
+  it('honors python.unmapped-imports: ignore', async () => {
+    const repo = importRepo({ 'app/main.py': 'import reqeusts\n' });
+
+    const config = configWith({});
+    config.python.unmappedImports = 'ignore';
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFake(['reqeusts']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('suppresses import findings via allowlist and inline ignore', async () => {
+    const repo = importRepo({
+      'src/allowed.ts': "import x from 'reqeusts';\n",
+      'src/other.ts': "import y from 'lodas'; // slopgate:ignore import.not-found\n",
+    });
+
+    const config = configWith({});
+    config.deps.allowlist = ['reqeusts'];
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFake(['reqeusts', 'lodas']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.findings).toEqual([]);
+  });
+
+  it('suppresses an aliased import finding when the import name is allowlisted', async () => {
+    const repo = importRepo({ 'app/main.py': 'from bs4 import BeautifulSoup\n' });
+
+    const config = configWith({});
+    config.deps.allowlist = ['bs4'];
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFake(['beautifulsoup4']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.findings).toEqual([]);
+  });
+
+  it('skips import scanning when imports.enabled is false', async () => {
+    const repo = importRepo({ 'src/app.ts': "import x from 'reqeusts';\n" });
+
+    const config = configWith({});
+    config.imports.enabled = false;
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn: registryFake(['reqeusts']),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.findings).toEqual([]);
+  });
+
+  it('applies the typosquat check to imports too', async () => {
+    const repo = importRepo({ 'src/app.ts': "import express from 'expres';\n" });
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn: registryFakeWithAges({ expres: daysAgo(10) }),
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(result.verdict).toBe('warn');
+    const finding = result.findings.find((f) => f.rule === 'dep.typosquat');
+    expect(finding).toBeDefined();
+    expect(finding!.message).toContain('"expres"');
+    expect(finding!.message).toContain('"express"');
   });
 });

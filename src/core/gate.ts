@@ -3,12 +3,13 @@ import { join } from 'node:path';
 import { isIgnoredPath, parseInlineIgnore, type SlopgateConfig } from './config.js';
 import { extractDepCandidates, type DepCandidate, type FileReader } from './deps.js';
 import { parseDiff } from './diff.js';
+import { extractImportCandidates } from './imports.js';
 import { createNpmClient, createPypiClient } from './registry/index.js';
 import { RegistryCache, cacheKey } from './registry/cache.js';
 import { findTyposquatTarget, suggestPackage, type TyposquatTarget } from './baseline.js';
 import { scanSecrets } from './secrets.js';
 import { getRangeDiff, getStagedDiff, readFileAtRef } from './git.js';
-import type { ChangedFile, Finding, ScanResult } from './types.js';
+import type { Finding, ScanResult } from './types.js';
 
 export interface ScanOptions {
   repoRoot: string;
@@ -25,12 +26,18 @@ export interface ScanOptions {
 function notFoundFinding(candidate: DepCandidate): Finding {
   const registryLabel = candidate.ecosystem === 'npm' ? 'npm' : 'PyPI';
   const suggestion = suggestPackage(candidate.name, candidate.ecosystem);
+  const subject =
+    candidate.source === 'import'
+      ? candidate.importName && candidate.importName !== candidate.name
+        ? `import "${candidate.importName}" (package "${candidate.name}")`
+        : `import "${candidate.importName ?? candidate.name}"`
+      : `"${candidate.name}"`;
   return {
     severity: 'block',
-    rule: 'dep.not-found',
+    rule: candidate.source === 'import' ? 'import.not-found' : 'dep.not-found',
     file: candidate.file,
     line: candidate.line,
-    message: `"${candidate.name}" not found on ${registryLabel}`,
+    message: `${subject} not found on ${registryLabel}`,
     ...(suggestion ? { suggestion } : {}),
   };
 }
@@ -67,25 +74,14 @@ function typosquatFinding(
   };
 }
 
-async function scanDeps(
-  files: readonly ChangedFile[],
+async function scanCandidates(
+  candidates: readonly DepCandidate[],
   options: ScanOptions,
 ): Promise<{ findings: Finding[]; cacheHits: number }> {
   const { repoRoot, config } = options;
-  const reader: FileReader = {
-    read(path: string): string | null {
-      try {
-        return readFileSync(join(repoRoot, path), 'utf8');
-      } catch {
-        return null;
-      }
-    },
-    readAtRef(path: string, ref: string): string | null {
-      return readFileAtRef(repoRoot, ref, path);
-    },
-  };
-
-  const candidates = extractDepCandidates(files, reader);
+  if (candidates.length === 0) {
+    return { findings: [], cacheHits: 0 };
+  }
   const cache = new RegistryCache(options.cachePath ?? join(repoRoot, '.slopgate', 'cache.db'));
   const clients = {
     npm: createNpmClient(config.deps.registries.npm, options.fetchFn),
@@ -96,38 +92,67 @@ async function scanDeps(
   const findings: Finding[] = [];
   let cacheHits = 0;
   const typosquat = config.deps.typosquat;
+  const warnedUnmapped = new Set<string>();
+
+  const judge = (
+    candidate: DepCandidate,
+    exists: boolean,
+    createdAt: string | null,
+    target: TyposquatTarget | null,
+  ): void => {
+    if (!exists) {
+      if (candidate.unmapped) {
+        // An import with no alias entry may simply use a mapping we do not
+        // know — warn once per name instead of blocking the commit.
+        if (warnedUnmapped.has(candidate.name)) {
+          return;
+        }
+        warnedUnmapped.add(candidate.name);
+        const suggestion = suggestPackage(
+          candidate.importName ?? candidate.name,
+          candidate.ecosystem,
+        );
+        findings.push({
+          severity: 'warn',
+          rule: 'import.unmapped',
+          file: candidate.file,
+          line: candidate.line,
+          message: `import "${candidate.importName ?? candidate.name}" has no known package mapping and "${candidate.name}" was not found on PyPI`,
+          ...(suggestion ? { suggestion } : {}),
+        });
+        return;
+      }
+      findings.push(notFoundFinding(candidate));
+      return;
+    }
+    if (typosquat.enabled && createdAt) {
+      const warning = typosquatFinding(candidate, createdAt, target, typosquat.maxAgeDays);
+      if (warning) {
+        findings.push(warning);
+      }
+    }
+  };
 
   try {
     for (const candidate of candidates) {
-      if (config.deps.allowlist.includes(candidate.name)) {
+      if (
+        config.deps.allowlist.includes(candidate.name) ||
+        (candidate.importName !== undefined &&
+          config.deps.allowlist.includes(candidate.importName))
+      ) {
         continue;
       }
       const client = clients[candidate.ecosystem];
       const cached = cachedVerdicts.get(cacheKey(candidate.ecosystem, candidate.name));
       if (cached) {
         cacheHits += 1;
-        if (!cached.exists) {
-          findings.push(notFoundFinding(candidate));
-          continue;
-        }
         // Without a cached age the verdict cannot be judged — skip the
         // baseline scan entirely rather than paying it for nothing.
-        if (typosquat.enabled && cached.createdAt) {
-          const target = findTyposquatTarget(
-            candidate.name,
-            candidate.ecosystem,
-            typosquat.maxDistance,
-          );
-          const warning = typosquatFinding(
-            candidate,
-            cached.createdAt,
-            target,
-            typosquat.maxAgeDays,
-          );
-          if (warning) {
-            findings.push(warning);
-          }
-        }
+        const target =
+          typosquat.enabled && cached.createdAt
+            ? findTyposquatTarget(candidate.name, candidate.ecosystem, typosquat.maxDistance)
+            : null;
+        judge(candidate, cached.exists, cached.createdAt, target);
         continue;
       }
       // Only look-alikes of popular packages need the packument body, so the
@@ -138,23 +163,11 @@ async function scanDeps(
       try {
         const result = await client.check(candidate.name, { metadata: target !== null });
         cache.set(candidate.ecosystem, candidate.name, result.exists, result.createdAt);
-        if (!result.exists) {
-          findings.push(notFoundFinding(candidate));
-          continue;
-        }
-        const warning = typosquatFinding(
-          candidate,
-          result.createdAt,
-          target,
-          typosquat.maxAgeDays,
-        );
-        if (warning) {
-          findings.push(warning);
-        }
+        judge(candidate, result.exists, result.createdAt, target);
       } catch {
         findings.push({
           severity: 'warn',
-          rule: 'dep.registry-error',
+          rule: candidate.source === 'import' ? 'import.registry-error' : 'dep.registry-error',
           file: candidate.file,
           line: candidate.line,
           message: `Could not verify "${candidate.name}" — ${candidate.ecosystem} registry unreachable (fail-open)`,
@@ -215,10 +228,33 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
     if (config.secrets.enabled) {
       findings.push(...scanSecrets(scannable));
     }
+    const candidates: DepCandidate[] = [];
     if (config.deps.enabled) {
-      const deps = await scanDeps(scannable, options);
-      findings.push(...deps.findings);
-      cacheHits = deps.cacheHits;
+      const reader: FileReader = {
+        read(path: string): string | null {
+          try {
+            return readFileSync(join(repoRoot, path), 'utf8');
+          } catch {
+            return null;
+          }
+        },
+        readAtRef(path: string, ref: string): string | null {
+          return readFileAtRef(repoRoot, ref, path);
+        },
+      };
+      candidates.push(...extractDepCandidates(scannable, reader));
+    }
+    if (config.imports.enabled) {
+      candidates.push(
+        ...extractImportCandidates(scannable).filter(
+          (candidate) => !(candidate.unmapped && config.python.unmappedImports === 'ignore'),
+        ),
+      );
+    }
+    if (candidates.length > 0) {
+      const scanned = await scanCandidates(candidates, options);
+      findings.push(...scanned.findings);
+      cacheHits = scanned.cacheHits;
     }
   }
 

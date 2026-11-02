@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP complete — all 9 build phases done, 170+ tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP + import scanning + typosquat warnings done — 194 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -28,7 +28,7 @@ Existing tools don't cover this: `gitleaks`/`trufflehog` find secrets genericall
 |---|---|---|
 | 🔑 Secret scan | API keys, tokens, private keys, DB URLs in added lines | ✅ |
 | 📦 Slopsquat firewall | New deps that don't exist in npm/PyPI, or exist but are 1-2 edits from a popular name | ✅ |
-| 🧭 Import scan | Hallucinated `import`/`require` statements in changed files | v1 |
+| 🧭 Import scan | Hallucinated `import`/`require` statements in changed files (JS/TS + Python, alias-aware) | ✅ |
 | 🤖 Agent-diff targeting | Extra scrutiny on agent-authored commits | v1 |
 
 ## Quick start
@@ -84,6 +84,8 @@ deps:
     max-age-days: 90       # packages younger than this look seeded
 python:
   unmapped-imports: warn   # import names with no known package mapping
+imports:
+  enabled: true            # scan import statements, not just manifests
 ```
 
 Manual scans:
@@ -105,11 +107,13 @@ git diff (staged / range / PR)
         ▼
   added-lines only ──► secret detector ──► findings
         │
-        └──► dependency extractor ──► registry existence check ──► similarity check
-                                              │                          │
-                                        SQLite cache            popular-package baseline
-                                              ▼                          ▼
-                                        report ──► exit code (block / warn / pass)
+        ├──► dependency extractor ──► registry existence check ──► similarity check
+        │                                      │                          │
+        │                                SQLite cache            popular-package baseline
+        │
+        └──► import extractor ──► (alias table for Python) ──► same registry check
+                                               │
+                                         report ──► exit code (block / warn / pass)
 ```
 
 Three design rules keep it fast and quiet:
@@ -117,11 +121,12 @@ Three design rules keep it fast and quiet:
 1. **Diff-scoped** — only added lines are scanned; lockfiles are never dependency-checked.
 2. **Cache-first** — every registry verdict is cached in local SQLite; a warm pre-commit run is < 100 ms.
 3. **Fail-open on registry outage** — if npm/PyPI is unreachable, warn instead of blocking your commit.
+4. **Alias-aware, never guessing** — Python imports resolve through a curated alias table (`bs4` → `beautifulsoup4`); names with no entry are checked as-is and only *warn* when unknown, because the mapping might simply be missing.
 
 ## Roadmap
 
 - **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`) + typosquat warnings, CLI, config
-- **v1** — import scanning (JS/Python), GitHub Action + SARIF, cache TTL controls
+- **v1** — ✅ import scanning (JS/Python) · GitHub Action + SARIF · cache TTL controls
 - **v2** — `go.mod` / `Cargo.toml` / `Gemfile`, registry-metadata risk scoring, quarantine mode, MCP server (agents self-check before commit)
 
 ## Contributing

@@ -60,6 +60,9 @@ deps:
 
 python:
   unmapped-imports: warn   # warn | ignore (v1)
+
+imports:
+  enabled: true            # scan import statements, not just manifests
 `;
 
 export interface InitOptions {
