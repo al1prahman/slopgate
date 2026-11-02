@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP + import scanning + typosquat warnings done — 194 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF done — 214 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -30,6 +30,7 @@ Existing tools don't cover this: `gitleaks`/`trufflehog` find secrets genericall
 | 📦 Slopsquat firewall | New deps that don't exist in npm/PyPI, or exist but are 1-2 edits from a popular name | ✅ |
 | 🧭 Import scan | Hallucinated `import`/`require` statements in changed files (JS/TS + Python, alias-aware) | ✅ |
 | 🤖 Agent-diff targeting | Extra scrutiny on agent-authored commits | v1 |
+| ⚙️ GitHub Action | SARIF annotations on the PR diff + a summary comment | ✅ |
 
 ## Quick start
 
@@ -94,10 +95,37 @@ Manual scans:
 slopgate scan --staged        # what pre-commit runs
 slopgate scan --range origin/main..HEAD
 slopgate scan --json          # machine-readable
+slopgate scan --format sarif  # SARIF 2.1.0 for code scanning upload
+slopgate scan --mode warn     # downgrade blocks to warnings for this run
 slopgate scan --offline       # cache-only; registry misses warn (fail-open)
 slopgate cache                # cache stats (path, entries, size)
 slopgate cache clear          # drop the local verdict cache
 ```
+
+## GitHub Action
+
+`.github/workflows/slopgate.yml` in any repo:
+
+```yaml
+name: slopgate
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write      # for the summary comment
+  security-events: write    # for the SARIF upload
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # the action needs the base ref for the diff
+      - uses: al1prahman/slopgate@v1
+        with:
+          mode: block       # or warn — never fails the PR, just comments
+```
+
+Findings land as inline annotations on the diff (via `github/codeql-action/upload-sarif`) and as one upserted comment on the PR. Inputs: `range`, `mode`, `comment`, `token`, `version`.
 
 ## How it works
 
@@ -126,7 +154,7 @@ Three design rules keep it fast and quiet:
 ## Roadmap
 
 - **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`) + typosquat warnings, CLI, config
-- **v1** — ✅ import scanning (JS/Python) · GitHub Action + SARIF · cache TTL controls
+- **v1** — ✅ import scanning (JS/Python) · ✅ GitHub Action + SARIF · cache TTL controls
 - **v2** — `go.mod` / `Cargo.toml` / `Gemfile`, registry-metadata risk scoring, quarantine mode, MCP server (agents self-check before commit)
 
 ## Contributing
