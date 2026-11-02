@@ -8,6 +8,15 @@ export function git(args: readonly string[], cwd: string): string {
   });
 }
 
+// git config --get exits 1 when the key is unset; treat that as empty, not an error.
+export function gitConfig(repoRoot: string, key: string): string {
+  try {
+    return git(['config', '--get', key], repoRoot).trim();
+  } catch {
+    return '';
+  }
+}
+
 export function findRepoRoot(cwd: string): string {
   return git(['rev-parse', '--show-toplevel'], cwd).trim();
 }

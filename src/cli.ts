@@ -17,9 +17,12 @@ export function createProgram(): Command {
   program
     .command('init')
     .description('Install git hooks and scaffold .slopgate.yml')
-    .action(() => {
-      // Implemented in Phase 8 (hooks + init command)
-      throw new Error('init is not implemented yet — coming in Phase 8');
+    .option('--uninstall', 'Remove the slopgate block from installed hooks')
+    .action(async (options: Record<string, unknown>) => {
+      const { initCommand } = await import('./commands/init.js');
+      initCommand({
+        ...(typeof options.uninstall === 'boolean' ? { uninstall: options.uninstall } : {}),
+      });
     });
 
   program
