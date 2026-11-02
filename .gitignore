@@ -14,3 +14,6 @@ dist/
 # editor
 .vscode/
 .idea/
+
+# npm pack artifacts
+*.tgz
