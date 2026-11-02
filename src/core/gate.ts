@@ -86,7 +86,10 @@ async function scanCandidates(
   if (candidates.length === 0) {
     return { findings: [], cacheHits: 0 };
   }
-  const cache = new RegistryCache(options.cachePath ?? join(repoRoot, '.slopgate', 'cache.db'));
+  const cache = new RegistryCache(options.cachePath ?? join(repoRoot, '.slopgate', 'cache.db'), {
+    positiveTtlMs: config.deps.cache.positiveTtlHours * 3_600_000,
+    negativeTtlMs: config.deps.cache.negativeTtlMinutes * 60_000,
+  });
   const clients = {
     npm: createNpmClient(config.deps.registries.npm, options.fetchFn),
     pypi: createPypiClient(config.deps.registries.pypi, options.fetchFn),

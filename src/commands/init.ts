@@ -57,9 +57,12 @@ deps:
     enabled: true          # warn on young look-alikes of popular packages
     max-distance: 2        # edits from a popular name (0-5)
     max-age-days: 90       # packages younger than this look seeded
+  cache:
+    positive-ttl-hours: 24    # how long an "exists" verdict is trusted
+    negative-ttl-minutes: 60  # how long a "missing" verdict is re-checked
 
 python:
-  unmapped-imports: warn   # warn | ignore (v1)
+  unmapped-imports: warn   # import names with no known package mapping
 
 imports:
   enabled: true            # scan import statements, not just manifests

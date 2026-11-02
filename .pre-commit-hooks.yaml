@@ -1,0 +1,31 @@
+# slopgate for the pre-commit framework (https://pre-commit.com)
+#
+# Add to a consumer repo's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/al1prahman/slopgate
+#       rev: v1.0.0
+#       hooks:
+#         - id: slopgate
+#
+# The repo rev pins the config; bump it to upgrade slopgate itself.
+
+- id: slopgate
+  name: slopgate (staged)
+  description: Block hallucinated dependencies and leaked secrets in staged changes
+  entry: slopgate scan --staged
+  language: node
+  pass_filenames: false
+  require_serial: true
+  stages: [pre-commit]
+  additional_dependencies: [slopgate]
+
+- id: slopgate-push
+  name: slopgate (pushed range)
+  description: Scan the commits about to be pushed, with the agent-commit heuristic
+  entry: slopgate scan --range origin/main..HEAD
+  language: node
+  pass_filenames: false
+  require_serial: true
+  stages: [pre-push]
+  additional_dependencies: [slopgate]

@@ -20,6 +20,10 @@ export interface SlopgateConfig {
       maxDistance: number;
       maxAgeDays: number;
     };
+    cache: {
+      positiveTtlHours: number;
+      negativeTtlMinutes: number;
+    };
   };
   python: {
     unmappedImports: 'warn' | 'ignore';
@@ -55,6 +59,10 @@ export function defaultConfig(): SlopgateConfig {
         enabled: true,
         maxDistance: 2,
         maxAgeDays: 90,
+      },
+      cache: {
+        positiveTtlHours: 24,
+        negativeTtlMinutes: 60,
       },
     },
     python: {
@@ -116,6 +124,22 @@ function mergeConfig(base: SlopgateConfig, partial: Record<string, unknown>): Sl
     if (registries && typeof registries === 'object') {
       if (typeof registries.npm === 'string') merged.deps.registries.npm = registries.npm;
       if (typeof registries.pypi === 'string') merged.deps.registries.pypi = registries.pypi;
+    }
+    const cache = deps.cache as Record<string, unknown> | undefined;
+    if (cache && typeof cache === 'object') {
+      const hours = cache['positive-ttl-hours'] ?? cache.positiveTtlHours;
+      if (typeof hours === 'number' && Number.isInteger(hours) && hours >= 1 && hours <= 8760) {
+        merged.deps.cache.positiveTtlHours = hours;
+      }
+      const minutes = cache['negative-ttl-minutes'] ?? cache.negativeTtlMinutes;
+      if (
+        typeof minutes === 'number' &&
+        Number.isInteger(minutes) &&
+        minutes >= 1 &&
+        minutes <= 1440
+      ) {
+        merged.deps.cache.negativeTtlMinutes = minutes;
+      }
     }
   }
   const python = partial.python as Record<string, unknown> | undefined;

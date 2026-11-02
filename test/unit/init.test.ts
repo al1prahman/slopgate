@@ -3,7 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import { initCommand } from '../../src/commands/init.js';
+import { defaultConfig, loadConfig } from '../../src/core/config.js';
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', args, { cwd, stdio: 'ignore' });
@@ -42,6 +44,27 @@ describe('initCommand', () => {
     const config = readFileSync(join(repo, '.slopgate.yml'), 'utf8');
     expect(config).toContain('agent:');
     expect(config).toContain('enabled: true');
+  });
+
+  it('scaffolds a .slopgate.yml that parses with no duplicate keys', () => {
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    // A duplicated top-level key (e.g. two deps: blocks) is a YAML error
+    // that would break every scan in the consumer repo.
+    const parsed = parseYaml(readFileSync(join(repo, '.slopgate.yml'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(parsed)).toEqual([
+      'mode',
+      'secrets',
+      'deps',
+      'python',
+      'imports',
+      'agent',
+    ]);
+    expect(loadConfig(repo)).toEqual(defaultConfig());
   });
 
   it('is idempotent — running twice does not duplicate the managed block', () => {

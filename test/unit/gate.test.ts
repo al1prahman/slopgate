@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { runScan } from '../../src/core/gate.js';
 import { defaultConfig } from '../../src/core/config.js';
+import { RegistryCache } from '../../src/core/registry/cache.js';
 import type { SlopgateConfig } from '../../src/core/config.js';
 
 function git(cwd: string, ...args: string[]): void {
@@ -720,5 +721,65 @@ describe('runScan — agent-commit heuristic (F12)', () => {
 
     expect(result.agentAuthored).toBe(true);
     expect(result.agentMarkers).toEqual(['Co-Authored-By: Cursor <agent@cursor.com>']);
+  });
+});
+
+describe('runScan — cache TTL config', () => {
+  function seedMissingTwoHoursAgo(repo: string, name: string): void {
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+    const seeder = new RegistryCache(join(repo, '.slopgate', 'cache.db'), {
+      now: () => twoHoursAgo,
+    });
+    seeder.set('pypi', name, false);
+    seeder.close();
+  }
+
+  function staleRepo(): string {
+    const repo = makeRepo();
+    commitBase(repo);
+    writeFileSync(join(repo, 'requirements.txt'), 'requests==2.31.0\nreqeusts==1.0.0\n');
+    git(repo, 'add', '-A');
+    seedMissingTwoHoursAgo(repo, 'reqeusts');
+    return repo;
+  }
+
+  const checkedReqeusts = (fetchFn: typeof fetch): boolean =>
+    (fetchFn as unknown as { mock: { calls: unknown[][] } }).mock.calls.some((call) =>
+      String(call[0]).includes('reqeusts'),
+    );
+
+  it('re-checks a missing package once the default 60min negative TTL expires', async () => {
+    const repo = staleRepo();
+    const fetchFn = registryFake([]);
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn,
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(checkedReqeusts(fetchFn)).toBe(true);
+    expect(result.cacheHits).toBe(0);
+  });
+
+  it('trusts the cached verdict when negative-ttl-minutes covers its age', async () => {
+    const repo = staleRepo();
+    const fetchFn = registryFake([]);
+
+    const config = configWith({});
+    config.deps.cache.negativeTtlMinutes = 180; // 3h > the entry's 2h age
+
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config,
+      fetchFn,
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    expect(checkedReqeusts(fetchFn)).toBe(false);
+    expect(result.cacheHits).toBe(1);
   });
 });

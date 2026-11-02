@@ -46,6 +46,13 @@ describe('defaultConfig', () => {
   it('enables the agent-commit heuristic by default', () => {
     expect(defaultConfig().agent.enabled).toBe(true);
   });
+
+  it('defaults the cache TTLs to 24h positive / 60min negative', () => {
+    expect(defaultConfig().deps.cache).toEqual({
+      positiveTtlHours: 24,
+      negativeTtlMinutes: 60,
+    });
+  });
 });
 
 describe('loadConfig', () => {
@@ -76,6 +83,9 @@ describe('loadConfig', () => {
         '  ecosystems: [npm]',
         '  allowlist: [my-internal-pkg]',
         '  custom-index: [https://npm.internal.co]',
+        '  cache:',
+        '    positive-ttl-hours: 6',
+        '    negative-ttl-minutes: 5',
         'imports:',
         '  enabled: false',
         'agent:',
@@ -89,6 +99,7 @@ describe('loadConfig', () => {
     expect(config.deps.customIndex).toEqual(['https://npm.internal.co']);
     expect(config.imports.enabled).toBe(false);
     expect(config.agent.enabled).toBe(false);
+    expect(config.deps.cache).toEqual({ positiveTtlHours: 6, negativeTtlMinutes: 5 });
   });
 
   it('throws a helpful error on malformed YAML', () => {

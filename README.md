@@ -8,7 +8,7 @@
 [![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF + agent-commit detection done — 242 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF + agent-commit detection done — 250 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
@@ -83,6 +83,9 @@ deps:
     enabled: true          # warn on young look-alikes of popular packages
     max-distance: 2        # edits from a popular name (0-5)
     max-age-days: 90       # packages younger than this look seeded
+  cache:
+    positive-ttl-hours: 24    # how long an "exists" verdict is trusted
+    negative-ttl-minutes: 60  # how long a "missing" verdict is re-checked
 python:
   unmapped-imports: warn   # import names with no known package mapping
 imports:
@@ -143,6 +146,19 @@ slopgate: scanned 3 file(s), +42 added line(s), 38ms
 
 The signal is informational: it never changes the verdict on its own. It tells a reviewer that machine-speed code landed in this diff, so the findings above it deserve a harder look. Full marker list rides along in `--format json` and in the SARIF run's property bag. Staged scans have no commit message yet, so the heuristic only applies to range scans. Disable with `agent: { enabled: false }`.
 
+## pre-commit framework
+
+`.pre-commit-hooks.yaml` ships in the repo, so framework users need no local install:
+
+```yaml
+repos:
+  - repo: https://github.com/al1prahman/slopgate
+    rev: v1.0.0
+    hooks:
+      - id: slopgate          # pre-commit: scans staged changes
+      - id: slopgate-push     # pre-push: scans the pushed range
+```
+
 ## How it works
 
 ```
@@ -170,7 +186,7 @@ Three design rules keep it fast and quiet:
 ## Roadmap
 
 - **MVP** — git hook + secret scan + dependency existence check (`package.json`, `requirements.txt`) + typosquat warnings, CLI, config
-- **v1** — ✅ import scanning (JS/Python) · ✅ typosquat warnings · ✅ GitHub Action + SARIF · ✅ agent-commit detection · cache TTL controls
+- **v1** — ✅ import scanning (JS/Python) · ✅ typosquat warnings · ✅ GitHub Action + SARIF · ✅ agent-commit detection · ✅ cache TTL controls · ✅ `.pre-commit-hooks.yaml`
 - **v2** — `go.mod` / `Cargo.toml` / `Gemfile`, registry-metadata risk scoring, quarantine mode, MCP server (agents self-check before commit)
 
 ## Contributing
