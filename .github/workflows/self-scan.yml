@@ -1,0 +1,51 @@
+name: slopgate self-scan
+
+# Dogfood: run the local build against this repo's own PR diff with SARIF
+# output. The published action (action.yml) is what consumers use; this
+# workflow proves the SARIF path end-to-end on every PR until v1 ships.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  self-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Scan the PR diff (SARIF)
+        shell: bash
+        run: |
+          set +e
+          node dist/cli.js scan --range "origin/${{ github.base_ref }}...HEAD" --format sarif > results.sarif
+          code=$?
+          set -e
+          node -e "
+            const fs = require('fs');
+            const sarif = JSON.parse(fs.readFileSync('results.sarif', 'utf8'));
+            if (sarif.version !== '2.1.0') {
+              console.error('not a SARIF 2.1.0 document');
+              process.exit(1);
+            }
+            const results = sarif.runs[0].results;
+            console.log('slopgate self-scan: ' + results.length + ' finding(s)');
+            for (const r of results) {
+              const loc = r.locations[0].physicalLocation;
+              console.log('  ' + r.level + '  ' + r.ruleId + '  ' + loc.artifactLocation.uri + ':' + loc.region.startLine);
+            }
+          "
+          if [ "$code" = "2" ]; then
+            echo "::error::slopgate self-scan found blocking findings"
+            exit 1
+          fi
+          exit 0

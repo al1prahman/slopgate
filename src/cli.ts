@@ -46,7 +46,8 @@ export function createProgram(): Command {
     .description('Scan a diff for secrets and hallucinated dependencies')
     .option('--staged', 'Scan staged changes (what pre-commit runs)')
     .option('--range <range>', 'Scan a git range, e.g. origin/main..HEAD')
-    .option('--format <format>', 'Output format: pretty | json', 'pretty')
+    .option('--format <format>', 'Output format: pretty | json | sarif', 'pretty')
+    .option('--mode <mode>', 'Override the configured mode: block | warn | off')
     .option('--quiet', 'Print only the verdict line')
     .option('--offline', 'Use the local cache only; skip registry lookups')
     .action(async (options: Record<string, unknown>) => {
@@ -55,6 +56,7 @@ export function createProgram(): Command {
         ...(typeof options.staged === 'boolean' ? { staged: options.staged } : {}),
         ...(typeof options.range === 'string' ? { range: options.range } : {}),
         ...(typeof options.format === 'string' ? { format: options.format } : {}),
+        ...(typeof options.mode === 'string' ? { mode: options.mode as 'block' | 'warn' | 'off' } : {}),
         ...(typeof options.quiet === 'boolean' ? { quiet: options.quiet } : {}),
         ...(typeof options.offline === 'boolean' ? { offline: options.offline } : {}),
       });

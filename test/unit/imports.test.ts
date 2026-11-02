@@ -69,6 +69,17 @@ describe('extractImportCandidates — JS/TS', () => {
     expect(candidates).toEqual([]);
   });
 
+  it('skips specifiers that are not legal package names (template literals)', () => {
+    const candidates = extractImportCandidates([
+      jsFile([
+        'const msg = `import "${candidate.importName}" not found on npm`;',
+        'log(`import "${a}" (package "${b}")`);',
+        "import upper from 'Express';",
+      ]),
+    ]);
+    expect(candidates).toEqual([]);
+  });
+
   it('handles comma-separated imports with aliases', () => {
     const candidates = extractImportCandidates([pyFile(['import requests, numpy as np'])]);
     expect(names(candidates)).toEqual(['requests', 'numpy']);

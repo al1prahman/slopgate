@@ -1,4 +1,5 @@
-import type { ScanResult } from './types.js';
+import { SLOPGATE_VERSION } from '../version.js';
+import type { Finding, ScanResult, Severity } from './types.js';
 
 const useColor = process.stdout.isTTY === true && !process.env.NO_COLOR;
 
@@ -55,4 +56,93 @@ export function formatPretty(result: ScanResult, options: { quiet?: boolean } = 
 
 export function formatJson(result: ScanResult): string {
   return JSON.stringify(result, null, 2);
+}
+
+const SARIF_SCHEMA = 'https://json.schemastore.org/sarif-2.1.0.json';
+const INFORMATION_URI = 'https://github.com/al1prahman/slopgate';
+
+const RULE_DESCRIPTIONS: Record<string, string> = {
+  secret: 'A credential or secret pattern was found in an added line',
+  'dep.not-found': 'The dependency does not exist in its registry — probable hallucination',
+  'dep.typosquat': 'The package exists but is a young look-alike of a popular one',
+  'dep.registry-error': 'The registry could not be reached; the check failed open',
+  'import.not-found': 'The import maps to a package that does not exist in its registry',
+  'import.unmapped': 'The import has no known package mapping and its own name was not found',
+  'import.registry-error': 'The registry could not be reached; the check failed open',
+};
+
+function ruleName(ruleId: string): string {
+  return ruleId
+    .split(/[.-]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
+function ruleDescription(ruleId: string): string {
+  return (
+    RULE_DESCRIPTIONS[ruleId] ??
+    RULE_DESCRIPTIONS[ruleId.split('.')[0]!] ??
+    'slopgate finding'
+  );
+}
+
+function sarifLevel(severity: Severity): 'error' | 'warning' | 'note' {
+  if (severity === 'block') {
+    return 'error';
+  }
+  if (severity === 'warn') {
+    return 'warning';
+  }
+  return 'note';
+}
+
+function sarifMessage(finding: Finding): string {
+  return finding.suggestion
+    ? `${finding.message} (did you mean '${finding.suggestion}'?)`
+    : finding.message;
+}
+
+/**
+ * SARIF 2.1.0 output for github/codeql-action/upload-sarif — findings land as
+ * inline annotations on the PR diff.
+ */
+export function formatSarif(result: ScanResult): string {
+  const rules = [...new Set(result.findings.map((finding) => finding.rule))].sort();
+  return JSON.stringify(
+    {
+      $schema: SARIF_SCHEMA,
+      version: '2.1.0',
+      runs: [
+        {
+          tool: {
+            driver: {
+              name: 'slopgate',
+              version: SLOPGATE_VERSION,
+              informationUri: INFORMATION_URI,
+              rules: rules.map((id) => ({
+                id,
+                name: ruleName(id),
+                shortDescription: { text: ruleDescription(id) },
+              })),
+            },
+          },
+          results: result.findings.map((finding) => ({
+            ruleId: finding.rule,
+            level: sarifLevel(finding.severity),
+            message: { text: sarifMessage(finding) },
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: finding.file.replace(/\\/g, '/') },
+                  region: { startLine: finding.line },
+                },
+              },
+            ],
+          })),
+        },
+      ],
+    },
+    null,
+    2,
+  );
 }

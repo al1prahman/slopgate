@@ -66,6 +66,12 @@ const JS_IMPORT_PATTERNS: readonly RegExp[] = [
 
 const NON_PACKAGE_PREFIXES = ['./', '../', '/', 'node:', 'http:', 'https:', 'data:'];
 
+// A real specifier is a legal package name (optionally scoped, plus a
+// sub-path). Anything else — template placeholders like ${name}, log
+// strings, shell fragments — is code that merely mentions an import.
+const VALID_SPECIFIER =
+  /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(\/[a-z0-9-._~]+)*$/;
+
 function jsSpecifiers(line: string): string[] {
   const specs: string[] = [];
   for (const pattern of JS_IMPORT_PATTERNS) {
@@ -78,6 +84,9 @@ function jsSpecifiers(line: string): string[] {
 
 function jsPackageName(specifier: string): string | null {
   if (NON_PACKAGE_PREFIXES.some((prefix) => specifier.startsWith(prefix))) {
+    return null;
+  }
+  if (!VALID_SPECIFIER.test(specifier)) {
     return null;
   }
   if (specifier.startsWith('@')) {

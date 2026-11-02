@@ -78,6 +78,44 @@ describe('scanCommand', () => {
     expect(parsed.findings.some((finding) => finding.rule === 'secret.anthropic-key')).toBe(true);
   });
 
+  it('--format sarif emits a parseable SARIF document on stdout', async () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'fetch.ts'), `const key = "sk-ant-api03-${'a1b2c3d4e5'.repeat(4)}";\n`);
+    git(repo, 'add', '-A');
+
+    const { code, out } = await runCli(repo, { staged: true, format: 'sarif' });
+    expect(code).toBe(2);
+    const sarif = JSON.parse(out) as {
+      version: string;
+      runs: { tool: { driver: { name: string } }; results: { ruleId: string; level: string }[] }[];
+    };
+    expect(sarif.version).toBe('2.1.0');
+    expect(sarif.runs[0]!.tool.driver.name).toBe('slopgate');
+    expect(sarif.runs[0]!.results[0]!.ruleId).toBe('secret.anthropic-key');
+    expect(sarif.runs[0]!.results[0]!.level).toBe('error');
+  });
+
+  it('--mode warn downgrades a block to a warning (exit 1)', async () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'fetch.ts'), `const key = "sk-ant-api03-${'a1b2c3d4e5'.repeat(4)}";\n`);
+    git(repo, 'add', '-A');
+
+    const { code, out } = await runCli(repo, { staged: true, mode: 'warn' });
+    expect(code).toBe(1);
+    expect(out).toContain('commit allowed');
+    expect(out).not.toContain('commit blocked');
+  });
+
+  it('--mode off skips the scan entirely', async () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, 'fetch.ts'), `const key = "sk-ant-api03-${'a1b2c3d4e5'.repeat(4)}";\n`);
+    git(repo, 'add', '-A');
+
+    const { code, out } = await runCli(repo, { staged: true, mode: 'off' });
+    expect(code).toBe(0);
+    expect(out).toContain('clean');
+  });
+
   it('--quiet prints only the verdict line', async () => {
     const repo = makeRepo();
     writeFileSync(join(repo, 'fetch.ts'), `const key = "sk-ant-api03-${'a1b2c3d4e5'.repeat(4)}";\n`);
