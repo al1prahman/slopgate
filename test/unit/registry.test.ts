@@ -207,6 +207,37 @@ describe('RegistryCache', () => {
     expect(result.has(cacheKey('npm', 'ghost'))).toBe(false);
   });
 
+  it('setMany writes every entry in one batch', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.setMany([
+      { ecosystem: 'npm', name: 'commander', exists: true, createdAt: '2024-01-01T00:00:00.000Z' },
+      { ecosystem: 'pypi', name: 'flask', exists: true },
+      { ecosystem: 'pypi', name: 'reqeusts', exists: false },
+    ]);
+
+    expect(cache.get('npm', 'commander')).toEqual({
+      exists: true,
+      createdAt: '2024-01-01T00:00:00.000Z',
+    });
+    expect(cache.get('pypi', 'flask')).toEqual({ exists: true, createdAt: null });
+    expect(cache.get('pypi', 'reqeusts')).toEqual({ exists: false, createdAt: null });
+  });
+
+  it('setMany is a no-op for an empty batch', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.setMany([]);
+    expect(cache.stats()).toEqual({ total: 0, existing: 0, missing: 0, stale: 0 });
+  });
+
+  it('setMany upserts over an existing entry', () => {
+    const cache = new RegistryCache(join(dir, 'cache.db'));
+    cache.set('npm', 'ghost-pkg', false);
+    cache.setMany([{ ecosystem: 'npm', name: 'ghost-pkg', exists: true }]);
+
+    expect(cache.get('npm', 'ghost-pkg')).toEqual({ exists: true, createdAt: null });
+    expect(cache.stats().total).toBe(1);
+  });
+
   it('getMany dedupes repeated names', () => {
     const cache = new RegistryCache(join(dir, 'cache.db'));
     cache.set('npm', 'commander', true);

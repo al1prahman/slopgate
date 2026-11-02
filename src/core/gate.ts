@@ -88,6 +88,12 @@ async function scanCandidates(
     pypi: createPypiClient(config.deps.registries.pypi, options.fetchFn),
   };
   const cachedVerdicts = cache.getMany(candidates);
+  const pendingWrites: {
+    ecosystem: string;
+    name: string;
+    exists: boolean;
+    createdAt: string | null;
+  }[] = [];
 
   const findings: Finding[] = [];
   let cacheHits = 0;
@@ -162,7 +168,12 @@ async function scanCandidates(
         : null;
       try {
         const result = await client.check(candidate.name, { metadata: target !== null });
-        cache.set(candidate.ecosystem, candidate.name, result.exists, result.createdAt);
+        pendingWrites.push({
+          ecosystem: candidate.ecosystem,
+          name: candidate.name,
+          exists: result.exists,
+          createdAt: result.createdAt,
+        });
         judge(candidate, result.exists, result.createdAt, target);
       } catch {
         findings.push({
@@ -175,7 +186,14 @@ async function scanCandidates(
       }
     }
   } finally {
-    cache.close();
+    // One transaction for every fresh verdict: individual set() calls each
+    // pay a commit, and a cold scan with hundreds of new deps would spend
+    // seconds on fsyncs otherwise.
+    try {
+      cache.setMany(pendingWrites);
+    } finally {
+      cache.close();
+    }
   }
 
   return { findings, cacheHits };

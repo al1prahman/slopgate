@@ -98,6 +98,38 @@ export class RegistryCache {
     this.setStmt.run(ecosystem, name, exists ? 1 : 0, this.now(), createdAt);
   }
 
+  // One transaction for the whole batch. Each individual set() pays an
+  // implicit commit (fsync on most filesystems) — a cold scan that checks
+  // 500 new deps would otherwise spend seconds on disk syncs.
+  setMany(
+    entries: readonly {
+      ecosystem: string;
+      name: string;
+      exists: boolean;
+      createdAt?: string | null;
+    }[],
+  ): void {
+    if (entries.length === 0) {
+      return;
+    }
+    this.db.exec('BEGIN');
+    try {
+      for (const entry of entries) {
+        this.setStmt.run(
+          entry.ecosystem,
+          entry.name,
+          entry.exists ? 1 : 0,
+          this.now(),
+          entry.createdAt ?? null,
+        );
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   // node:sqlite costs ~100us per statement round-trip on current Node, so a
   // warm 1500-dep diff would spend ~170ms on individual gets. One batched
   // query per chunk brings the whole lookup down to a few milliseconds.

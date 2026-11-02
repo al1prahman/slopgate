@@ -35,9 +35,7 @@ describe('perf: warm scan of a 500-file diff', () => {
     git('add', '-A');
 
     const cache = new RegistryCache(join(repo, '.slopgate', 'cache.db'));
-    for (const name of names) {
-      cache.set('pypi', name, true);
-    }
+    cache.setMany(names.map((name) => ({ ecosystem: 'pypi', name, exists: true })));
     cache.close();
 
     // The git spawn is process-startup cost (~250ms on Windows), not scan
@@ -70,5 +68,7 @@ describe('perf: warm scan of a 500-file diff', () => {
 
     expect(result?.cacheHits).toBe(names.length);
     expect(elapsed).toBeLessThan(100);
-  }, 60_000);
+    // Generous ceiling: the setup below (500 files, git add, cache seed) is
+    // environment-bound and a degraded runner must not fail the scan gate.
+  }, 120_000);
 });
