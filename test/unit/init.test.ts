@@ -67,6 +67,35 @@ describe('initCommand', () => {
     expect(loadConfig(repo)).toEqual(defaultConfig());
   });
 
+  it('gitignores the cache dir, creating .gitignore when absent', () => {
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    expect(readFileSync(join(repo, '.gitignore'), 'utf8').split('\n')).toContain('.slopgate/');
+  });
+
+  it('appends to an existing .gitignore without touching its entries', () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo, '.gitignore'), 'node_modules\ndist\n');
+
+    initCommand({ cwd: repo });
+
+    const lines = readFileSync(join(repo, '.gitignore'), 'utf8').split('\n');
+    expect(lines).toContain('node_modules');
+    expect(lines).toContain('dist');
+    expect(lines).toContain('.slopgate/');
+  });
+
+  it('does not duplicate the .gitignore entry on re-runs', () => {
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+    const first = readFileSync(join(repo, '.gitignore'), 'utf8');
+    initCommand({ cwd: repo });
+
+    expect(readFileSync(join(repo, '.gitignore'), 'utf8')).toBe(first);
+    expect(first.match(/\.slopgate\//g)).toHaveLength(1);
+  });
+
   it('is idempotent — running twice does not duplicate the managed block', () => {
     const repo = makeRepo();
     initCommand({ cwd: repo });

@@ -120,6 +120,26 @@ function installHook(hooksDir: string, name: string, body: string): 'created' | 
   return 'appended';
 }
 
+// Appends `.slopgate/` to .gitignore when missing. Returns the action
+// label, or null when the entry is already there (idempotent re-runs).
+function ensureGitignoreEntry(repoRoot: string, entry: string): string | null {
+  const path = join(repoRoot, '.gitignore');
+  if (existsSync(path)) {
+    const content = readFileSync(path, 'utf8');
+    const present = content
+      .split('\n')
+      .some((line) => line.trim() === entry);
+    if (present) {
+      return null;
+    }
+    const separator = content.endsWith('\n') || content === '' ? '' : '\n';
+    writeFileSync(path, `${content}${separator}${entry}\n`);
+    return 'added .slopgate/ to .gitignore';
+  }
+  writeFileSync(path, `${entry}\n`);
+  return 'created .gitignore with .slopgate/';
+}
+
 function uninstallHook(hooksDir: string, name: string): boolean {
   const hookFile = join(hooksDir, name);
   if (!existsSync(hookFile)) {
@@ -156,6 +176,12 @@ export function initCommand(options: InitOptions = {}): void {
     if (!existsSync(configPath)) {
       writeFileSync(configPath, DEFAULT_CONFIG);
       actions.push(`created ${CONFIG_FILE_NAME}`);
+    }
+    // The verdict cache is machine-local; without this it shows up as
+    // untracked noise in every consumer repo the day after init.
+    const ignore = ensureGitignoreEntry(repoRoot, '.slopgate/');
+    if (ignore) {
+      actions.push(ignore);
     }
   }
 
