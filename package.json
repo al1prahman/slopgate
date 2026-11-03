@@ -6,6 +6,15 @@
   "bin": {
     "slopgate": "dist/cli.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/al1prahman/slopgate.git"
+  },
+  "homepage": "https://github.com/al1prahman/slopgate#readme",
+  "bugs": {
+    "url": "https://github.com/al1prahman/slopgate/issues"
+  },
+  "author": "al1prahman",
   "engines": {
     "node": ">=22.13.0"
   },

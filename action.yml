@@ -48,6 +48,12 @@ runs:
         set +e
         if [ -z "$RANGE" ]; then
           if [ -n "$GITHUB_BASE_REF" ]; then
+            # checkout@v4 with fetch-depth 0 does not guarantee a
+            # remote-tracking ref for the base branch on pull_request
+            # events — without this the range below resolves to nothing
+            # and the scan silently reports "clean".
+            git fetch --no-tags --quiet origin \
+              "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
             RANGE="origin/$GITHUB_BASE_REF...HEAD"
           else
             RANGE="HEAD~1..HEAD"

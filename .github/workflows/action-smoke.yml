@@ -1,0 +1,50 @@
+# Dogfood the published GitHub Action itself.
+#
+# self-scan.yml calls the CLI directly from a local build; this workflow
+# runs action.yml through the real `uses:` path (the local ./ form, same
+# steps a consumer gets from al1prahman/slopgate@v1), including the npx
+# install from the registry. Runs on every push to main and on demand.
+
+name: action-smoke
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Run the action via uses: ./'
+        id: slopgate
+        uses: ./
+        with:
+          range: HEAD~1..HEAD
+          mode: warn # never fail this job on findings — it is a smoke test
+          comment: 'false'
+
+      - name: Assert the action produced a verdict
+        shell: bash
+        env:
+          VERDICT: ${{ steps.slopgate.outputs.verdict }}
+        run: |
+          if [ -z "$VERDICT" ]; then
+            echo "::error::action produced no verdict output"
+            exit 1
+          fi
+          case "$VERDICT" in
+            pass | warn | block) echo "verdict: $VERDICT" ;;
+            *)
+              echo "::error::unexpected verdict: $VERDICT"
+              exit 1
+              ;;
+          esac

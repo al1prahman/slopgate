@@ -54,6 +54,15 @@ describe('action.yml', () => {
     expect(scan!.run).toContain('...HEAD');
   });
 
+  it('fetches the base ref before diffing against it', () => {
+    // checkout@v4 fetch-depth 0 does not guarantee origin/<base> exists on
+    // pull_request events; without the explicit fetch the range resolves
+    // to nothing and every PR scans as clean.
+    const scan = action.runs.steps.find((step) => step.id === 'scan');
+    expect(scan!.run).toContain('git fetch');
+    expect(scan!.run).toContain('refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF');
+  });
+
   it('uploads SARIF for inline PR annotations', () => {
     const upload = action.runs.steps.find((step) =>
       step.uses?.startsWith('github/codeql-action/upload-sarif'),
