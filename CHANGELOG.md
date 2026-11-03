@@ -6,6 +6,20 @@ All notable changes to slopgate are documented here. The format follows
 
 ## [1.0.9] — 2026-11-03
 
+### Added
+
+- `pyproject.toml` dependency extraction. The modern Python manifest was not
+  read at all, so a pyproject-based project had no slopsquatting protection
+  whatsoever — found dogfooding a 30-commit Python monorepo whose
+  `pyproject.toml` held 25 real dependencies and zero checks. Both PEP 621
+  (`dependencies = [...]` and each `[project.optional-dependencies]` group)
+  and Poetry (`[tool.poetry.dependencies]`, including `group.*`) shapes are
+  read. The walk is section-aware: ruff ignore codes, mypy per-file overrides
+  and pytest `testpaths` share the file and look like dependencies, and all
+  three produced false positives before the section gate existed. Candidates
+  are matched by name rather than line number, so a dependency still resolves
+  after earlier insertions move its line.
+
 ### Fixed
 
 Five false positives and one hang, all found dogfooding a Python monorepo
