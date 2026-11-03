@@ -10,6 +10,7 @@ import { findTyposquatTarget, suggestPackage, type TyposquatTarget } from './bas
 import { scanSecrets } from './secrets.js';
 import { getRangeDiff, getStagedDiff, getCommitMessages, readFileAtRef } from './git.js';
 import { detectAgentAuthorship } from './agent.js';
+import { hydrateUtf16NewFiles, rangeEndRef } from './binary-text.js';
 import type { Finding, ScanResult } from './types.js';
 
 export interface ScanOptions {
@@ -213,7 +214,11 @@ export async function runScan(options: ScanOptions): Promise<ScanResult> {
   const diffText =
     options.diffText ??
     (options.range ? getRangeDiff(repoRoot, options.range) : getStagedDiff(repoRoot));
-  const allFiles = parseDiff(diffText);
+  // UTF-16 files arrive from git marked binary (no line data); recover the
+  // new ones from the blob at the scan's end ref so their content is not
+  // silently skipped. See binary-text.ts.
+  const endRef = options.range ? rangeEndRef(options.range) : ':0';
+  const allFiles = hydrateUtf16NewFiles(parseDiff(diffText), repoRoot, endRef);
 
   // F12: agent-commit heuristic. Range scans read the commit messages in
   // scope; a staged diff has no message yet, so there is nothing to detect.

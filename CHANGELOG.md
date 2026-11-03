@@ -4,6 +4,18 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] — 2026-11-03
+
+### Fixed
+
+- Secrets in UTF-16 files are no longer silently skipped. git reports
+  UTF-16 text as binary ("Binary files ... differ", no numstat), so every
+  scanner skipped it — and on Windows that is the default encoding for
+  files written through PowerShell redirection or Notepad's "Unicode"
+  save. New UTF-16 files are now decoded from the staged blob and scanned
+  like any other text. Modified UTF-16 files remain skipped: git exposes
+  no line structure to tell which lines are new.
+
 ## [1.0.5] — 2026-11-03
 
 ### Fixed
@@ -110,6 +122,7 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.6]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.6
 [1.0.5]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.5
 [1.0.4]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.4
 [1.0.3]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.3

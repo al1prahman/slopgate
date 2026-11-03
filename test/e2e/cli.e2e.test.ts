@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -245,6 +245,41 @@ describe('slopgate e2e', () => {
 
     expect(existsSync(marker)).toBe(true);
     expect(commit.status).not.toBe(0);
+    expect(commit.stdout + commit.stderr).toContain('commit blocked');
+  });
+
+  it('blocks a secret hidden in a UTF-16 file', () => {
+    // git marks UTF-16 text as binary, so the diff carries no lines. A file
+    // written by PowerShell redirection or Notepad's "Unicode" save lands
+    // in exactly that shape — the secret must still be caught. The shim
+    // puts the local build on PATH: the npx fallback would fetch the
+    // published version, which predates this fix.
+    const binDir = join(repo, 'fakebin');
+    mkdirSync(binDir, { recursive: true });
+    const shim = join(binDir, 'slopgate');
+    writeFileSync(shim, `#!/bin/sh\nexec "${posix(process.execPath)}" "${posix(CLI)}" "$@"\n`);
+    chmodSync(shim, 0o755);
+
+    const init = cli(['init']);
+    expect(init.status).toBe(0);
+
+    const secret = 'const k = "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";';
+    writeFileSync(
+      join(repo, 'probe.ts'),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`${secret}\n`, 'utf16le')]),
+    );
+    execFileSync('git', ['add', 'probe.ts'], { cwd: repo, stdio: 'ignore' });
+
+    const commit = spawnSync('git', ['commit', '-m', 'add utf16 secret'], {
+      cwd: repo,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}` },
+    });
+
+    expect(commit.status).not.toBe(0);
+    // The hook runs with --quiet, so only the verdict line comes back; the
+    // rule-level assertion lives in the unit test.
     expect(commit.stdout + commit.stderr).toContain('commit blocked');
   });
 

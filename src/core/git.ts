@@ -29,6 +29,27 @@ export function getStagedDiff(cwd: string): string {
   return git(['diff', '--cached', '-U0'], cwd);
 }
 
+// Raw bytes for blob reads. `git()` decodes as utf8, which would corrupt
+// UTF-16 content before it could be inspected.
+export function gitBuffer(args: readonly string[], cwd: string): Buffer {
+  return execFileSync('git', [...args], {
+    cwd,
+    encoding: 'buffer',
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+}
+
+// The blob at <ref>:<path>. ref is a revision (HEAD) or an index stage
+// (`:0` for the staged version). Returns null when it does not exist.
+export function readBlob(cwd: string, ref: string, path: string): Buffer | null {
+  try {
+    return gitBuffer(['show', `${ref}:${path}`], cwd);
+  } catch {
+    return null;
+  }
+}
+
 export function getRangeDiff(cwd: string, range: string): string {
   return git(['diff', range, '-U0'], cwd);
 }
