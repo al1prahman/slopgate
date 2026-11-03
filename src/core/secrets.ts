@@ -88,7 +88,10 @@ const PATTERNS: readonly SecretPattern[] = [
 
 const GENERIC_NAME = /(?:api[_-]?key|apikey|token|secret|password|passwd|pwd|credentials?)/i;
 const CANDIDATE_TOKEN = /["'`]([^"'`\s]{20,})["'`]|(?<![A-Za-z0-9/_+.-])([A-Za-z0-9/_+.-]{20,})/g;
-const PLACEHOLDER = /^(?:your[_-]|xxx+|\*+|changeme|placeholder|example|dummy|fake|todo|none|null|undefined)/i;
+// Placeholder values, optionally wrapped: [YOUR-PASSWORD], <your-token>,
+// {YOUR_SECRET}, your-key, xxx, ***, changeme, redacted...
+const PLACEHOLDER =
+  /^[[{<]?(?:your[\s_-]|xxx+|\*+|changeme|placeholder|example|dummy|fake|todo|none|null|undefined|redacted|n\/a)/i;
 
 interface Claim {
   start: number;

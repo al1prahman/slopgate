@@ -4,6 +4,17 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] — 2026-11-03
+
+### Fixed
+
+- `secret.db-url` also skips bracket-wrapped placeholder passwords —
+  `[YOUR-PASSWORD]`, `<your-password>`, `{YOUR_PASSWORD}` — which is how
+  `.env.example` files ship them. Found auditing a real repo whose
+  `.env.example` blocked the full-history scan with
+  `postgresql://postgres.abc:[YOUR-PASSWORD]@aws-0-*.pooler.supabase.com`.
+  A real credential on a real host still blocks.
+
 ## [1.0.7] — 2026-11-03
 
 ### Fixed
@@ -136,6 +147,7 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.8]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.8
 [1.0.7]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.7
 [1.0.6]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.6
 [1.0.5]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.5

@@ -81,6 +81,10 @@ describe('scanSecrets', () => {
       'DATABASE_URL: postgres://admin:changeme@db.internal:5432/prod',
       'DATABASE_URL: postgres://admin:***@db.internal:5432/prod',
       'DATABASE_URL: postgres://admin:your-password@db.internal:5432/prod',
+      // Bracket-wrapped placeholders, as .env.example files ship them.
+      'DATABASE_URL=postgresql://postgres.abc:[YOUR-PASSWORD]@aws-0-ap.pooler.supabase.com:5432/postgres',
+      'DATABASE_URL=postgresql://postgres:<your-password>@db.internal:5432/prod',
+      'DATABASE_URL=postgresql://postgres:{YOUR_PASSWORD}@db.internal:5432/prod',
     ]) {
       expect(rulesFor(fileWith('ci.yml', line))).not.toContain('secret.db-url');
     }
