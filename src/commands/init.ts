@@ -7,6 +7,13 @@ const MARKER_START = '# >>> slopgate >>>';
 const MARKER_END = '# <<< slopgate <<<';
 
 const PRE_COMMIT_BODY = [
+  // A local devDependency first: no npx, no registry round-trip. Measured
+  // 0.2s versus 3-4s for `npx --yes`, which checks the registry on every
+  // invocation even when the package is already installed locally.
+  'if [ -f node_modules/.bin/slopgate ]; then',
+  '  node_modules/.bin/slopgate scan --staged --quiet',
+  '  exit $?',
+  'fi',
   'if command -v slopgate >/dev/null 2>&1; then',
   '  slopgate scan --staged --quiet',
   '  exit $?',
@@ -24,6 +31,11 @@ const PRE_COMMIT_BODY = [
 ].join('\n');
 
 const PRE_PUSH_BODY = [
+  // Local devDependency first — see the pre-commit hook for the numbers.
+  'if [ -f node_modules/.bin/slopgate ]; then',
+  '  node_modules/.bin/slopgate scan --range "@{push}...HEAD" --quiet',
+  '  exit $?',
+  'fi',
   'if command -v slopgate >/dev/null 2>&1; then',
   '  slopgate scan --range "@{push}...HEAD" --quiet',
   '  exit $?',
@@ -43,7 +55,7 @@ const HOOKS: Record<string, string> = {
   'pre-push': PRE_PUSH_BODY,
 };
 
-const DEFAULT_CONFIG = `# slopgate configuration — see https://github.com/<you>/slopgate
+const DEFAULT_CONFIG = `# slopgate configuration — see https://github.com/al1prahman/slopgate
 mode: block                # block | warn | off
 
 secrets:

@@ -4,6 +4,19 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] — 2026-11-03
+
+### Fixed
+
+- The installed hooks now prefer `node_modules/.bin/slopgate` over the npx
+  fallback. Found dogfooding in a real repo: warm commits measured 4s, and
+  the scan itself was 82ms — the entire cost was `npx --yes`, which checks
+  the registry on every invocation even when the package is installed
+  locally. The local binary runs in ~0.2s. A hook that costs 4s per commit
+  is a hook that gets `--no-verify`'d.
+- The scaffolded `.slopgate.yml` no longer ships a `github.com/<you>`
+  placeholder in its header comment.
+
 ## [1.0.4] — 2026-11-03
 
 ### Fixed
@@ -97,6 +110,7 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.5]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.5
 [1.0.4]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.4
 [1.0.3]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.3
 [1.0.2]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.2

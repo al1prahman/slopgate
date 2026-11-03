@@ -53,6 +53,32 @@ describe('initCommand', () => {
     }
   });
 
+  it('prefers a local devDependency over npx in the hooks', () => {
+    // Measured on a real repo: node_modules/.bin/slopgate runs in ~0.2s,
+    // `npx --yes @al1prahman/slopgate` in 3-4s because npx checks the
+    // registry on every invocation. A hook that costs 4s per commit gets
+    // --no-verify'd, so the local binary must come first.
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    for (const hook of ['pre-commit', 'pre-push']) {
+      const body = readFileSync(hookPath(repo, hook), 'utf8');
+      const localIdx = body.indexOf('node_modules/.bin/slopgate');
+      const npxIdx = body.indexOf('npx --yes');
+      expect(localIdx).toBeGreaterThan(-1);
+      expect(npxIdx).toBeGreaterThan(localIdx);
+    }
+  });
+
+  it('scaffolds a config with no unresolved placeholders', () => {
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    const config = readFileSync(join(repo, '.slopgate.yml'), 'utf8');
+    expect(config).not.toContain('<you>');
+    expect(config).toContain('https://github.com/al1prahman/slopgate');
+  });
+
   it('scaffolds a .slopgate.yml with the agent section', () => {
     const repo = makeRepo();
     initCommand({ cwd: repo });

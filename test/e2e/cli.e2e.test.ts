@@ -218,6 +218,36 @@ describe('slopgate e2e', () => {
     expect(commit.stdout + commit.stderr).toContain('commit blocked');
   });
 
+  it('the hook prefers node_modules/.bin over npx', () => {
+    // A repo that installed slopgate as a devDependency: the hook must
+    // call the local binary directly (measured ~0.2s) instead of paying
+    // the npx registry round-trip (~3-4s) on every commit. The shim drops
+    // a marker file, which proves the local branch is the one that ran.
+    expect(cli(['init']).status).toBe(0);
+
+    const binDir = join(repo, 'node_modules', '.bin');
+    mkdirSync(binDir, { recursive: true });
+    const marker = join(repo, 'local-bin-marker');
+    writeFileSync(
+      join(binDir, 'slopgate'),
+      `#!/bin/sh\ntouch "${posix(marker)}"\nexec "${posix(process.execPath)}" "${posix(CLI)}" "$@"\n`,
+    );
+    chmodSync(join(binDir, 'slopgate'), 0o755);
+
+    stage('requirements.txt', 'reqeusts==1.0.0\n');
+    seedCache({ reqeusts: false });
+
+    const commit = spawnSync('git', ['commit', '-m', 'add bad dep'], {
+      cwd: repo,
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+
+    expect(existsSync(marker)).toBe(true);
+    expect(commit.status).not.toBe(0);
+    expect(commit.stdout + commit.stderr).toContain('commit blocked');
+  });
+
   it('stays quiet on stderr in a repo with no commits yet', () => {
     // readFileAtRef runs `git show HEAD:package.json` — on a repo with no
     // commits git prints "fatal: invalid object name 'HEAD'" unless stderr
