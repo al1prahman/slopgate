@@ -153,7 +153,7 @@ The signal is informational: it never changes the verdict on its own. It tells a
 ```yaml
 repos:
   - repo: https://github.com/al1prahman/slopgate
-    rev: v1.0.0
+    rev: v1.0.1
     hooks:
       - id: slopgate          # pre-commit: scans staged changes
       - id: slopgate-push     # pre-push: scans the pushed range
