@@ -4,6 +4,23 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] — 2026-11-03
+
+### Fixed
+
+- The GitHub Action now fetches the PR base ref before diffing against
+  it. `actions/checkout` with `fetch-depth: 0` does not guarantee
+  `origin/<base>` exists on `pull_request` events, so the default range
+  could resolve to nothing and every PR would scan as silently clean.
+
+### Added
+
+- `action-smoke.yml` runs `action.yml` through the real `uses:` path on
+  every push to main — the published action had never been executed
+  end-to-end before.
+- package.json metadata (`repository`, `homepage`, `bugs`, `author`) so
+  the npm page links back to the repo.
+
 ## [1.0.2] — 2026-11-03
 
 ### Fixed
@@ -68,6 +85,7 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.3]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.3
 [1.0.2]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.2
 [1.0.1]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.1
 [1.0.0]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.0
