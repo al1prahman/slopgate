@@ -4,6 +4,14 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-11-03
+
+### Fixed
+
+- `slopgate init` now appends `.slopgate/` to `.gitignore` (creating the
+  file when absent, idempotently). Without it the verdict cache showed up
+  as untracked noise in every consumer repo the day after install.
+
 ## [1.0.1] — 2026-11-03
 
 ### Fixed
@@ -60,5 +68,6 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.2]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.2
 [1.0.1]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.1
 [1.0.0]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.0
