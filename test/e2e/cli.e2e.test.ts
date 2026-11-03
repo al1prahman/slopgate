@@ -198,6 +198,26 @@ describe('slopgate e2e', () => {
     expect(commit.stdout + commit.stderr).toContain('commit blocked');
   });
 
+  it('the hook works with no slopgate on PATH — the npx fallback', () => {
+    // The documented flow: `npx slopgate init` in a repo that does not
+    // depend on slopgate. No shim, no local install — the hook must
+    // resolve the scoped package over npx and still block a bad commit.
+    // This is the exact state a fresh dogfood repo is in.
+    expect(cli(['init']).status).toBe(0);
+
+    stage('requirements.txt', 'reqeusts==1.0.0\n');
+    seedCache({ reqeusts: false });
+
+    const commit = spawnSync('git', ['commit', '-m', 'add bad dep'], {
+      cwd: repo,
+      encoding: 'utf8',
+      timeout: 120_000,
+    });
+
+    expect(commit.status).not.toBe(0);
+    expect(commit.stdout + commit.stderr).toContain('commit blocked');
+  });
+
   it('stays quiet on stderr in a repo with no commits yet', () => {
     // readFileAtRef runs `git show HEAD:package.json` — on a repo with no
     // commits git prints "fatal: invalid object name 'HEAD'" unless stderr

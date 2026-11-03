@@ -12,7 +12,11 @@ const PRE_COMMIT_BODY = [
   '  exit $?',
   'fi',
   'if command -v npx >/dev/null 2>&1; then',
-  '  npx --no-install slopgate scan --staged --quiet',
+  // --yes + the scoped name: npx resolves a local devDep first, and falls
+  // back to the registry (cached after the first run). --no-install with a
+  // bare name fails outright when the package is not a local dependency,
+  // which is exactly the state `npx slopgate init` leaves behind.
+  '  npx --yes @al1prahman/slopgate scan --staged --quiet',
   '  exit $?',
   'fi',
   'echo "slopgate: hook present but slopgate is not installed; skipping" >&2',
@@ -25,7 +29,9 @@ const PRE_PUSH_BODY = [
   '  exit $?',
   'fi',
   'if command -v npx >/dev/null 2>&1; then',
-  '  npx --no-install slopgate scan --range "@{push}...HEAD" --quiet',
+  // Same reasoning as the pre-commit hook: the scoped name with --yes, so a
+  // local devDep wins and the registry is the fallback.
+  '  npx --yes @al1prahman/slopgate scan --range "@{push}...HEAD" --quiet',
   '  exit $?',
   'fi',
   'echo "slopgate: hook present but slopgate is not installed; skipping" >&2',

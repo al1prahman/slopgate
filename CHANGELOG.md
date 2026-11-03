@@ -4,6 +4,18 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] — 2026-11-03
+
+### Fixed
+
+- The installed git hooks now resolve slopgate over `npx --yes
+  @al1prahman/slopgate` instead of `npx --no-install slopgate`. The old
+  fallback failed outright in the exact state the documented quick start
+  leaves behind — `npx slopgate init` in a repo that does not depend on
+  slopgate — blocking every commit with an npx error. The scoped name
+  resolves a local devDependency first and the registry second, and a
+  new e2e test exercises that path for real (no shim, no local install).
+
 ## [1.0.3] — 2026-11-03
 
 ### Fixed
@@ -85,6 +97,7 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.4]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.4
 [1.0.3]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.3
 [1.0.2]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.2
 [1.0.1]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.1

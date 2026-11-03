@@ -37,6 +37,22 @@ describe('initCommand', () => {
     expect(prePush).toContain('--range');
   });
 
+  it('falls back to the scoped package over npx, never --no-install', () => {
+    // The documented flow is `npx slopgate init` in a repo that does NOT
+    // depend on slopgate. `npx --no-install slopgate` fails outright in
+    // that state (bare name, no local install) and would block every
+    // commit; the scoped name with --yes resolves a local devDep first
+    // and the registry second.
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    for (const hook of ['pre-commit', 'pre-push']) {
+      const body = readFileSync(hookPath(repo, hook), 'utf8');
+      expect(body).toContain('npx --yes @al1prahman/slopgate scan');
+      expect(body).not.toContain('--no-install');
+    }
+  });
+
   it('scaffolds a .slopgate.yml with the agent section', () => {
     const repo = makeRepo();
     initCommand({ cwd: repo });
