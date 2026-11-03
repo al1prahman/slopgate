@@ -7,6 +7,11 @@ const MARKER_START = '# >>> slopgate >>>';
 const MARKER_END = '# <<< slopgate <<<';
 
 const PRE_COMMIT_BODY = [
+  // Nothing staged: nothing to scan, and no reason to pay for node startup.
+  // `git commit` with an empty index is a reflex, not a commit.
+  'if git diff --cached --quiet; then',
+  '  exit 0',
+  'fi',
   // A local devDependency first: no npx, no registry round-trip. Measured
   // 0.2s versus 3-4s for `npx --yes`, which checks the registry on every
   // invocation even when the package is already installed locally.

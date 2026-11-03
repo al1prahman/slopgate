@@ -70,6 +70,19 @@ describe('initCommand', () => {
     }
   });
 
+  it('short-circuits the pre-commit hook when nothing is staged', () => {
+    // `git commit` on an empty index is a reflex; paying for node startup
+    // to scan zero files is pure latency.
+    const repo = makeRepo();
+    initCommand({ cwd: repo });
+
+    const body = readFileSync(hookPath(repo, 'pre-commit'), 'utf8');
+    const guardIdx = body.indexOf('git diff --cached --quiet');
+    const scanIdx = body.indexOf('scan --staged');
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(scanIdx).toBeGreaterThan(guardIdx);
+  });
+
   it('scaffolds a config with no unresolved placeholders', () => {
     const repo = makeRepo();
     initCommand({ cwd: repo });

@@ -67,7 +67,9 @@ const PATTERNS: readonly SecretPattern[] = [
   {
     rule: 'secret.db-url',
     label: 'Database URL with inline credentials',
-    regex: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^:\s/]+:[^@\s/]+@/g,
+    // Captures the password and host so the scanner can tell a real
+    // credential from a CI fixture's placeholder.
+    regex: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^:\s/]+:([^@\s/]+)@([^/\s]*)/g,
     severity: 'block',
   },
   {
@@ -86,7 +88,7 @@ const PATTERNS: readonly SecretPattern[] = [
 
 const GENERIC_NAME = /(?:api[_-]?key|apikey|token|secret|password|passwd|pwd|credentials?)/i;
 const CANDIDATE_TOKEN = /["'`]([^"'`\s]{20,})["'`]|(?<![A-Za-z0-9/_+.-])([A-Za-z0-9/_+.-]{20,})/g;
-const PLACEHOLDER = /^(?:your[_-]|xxx+|changeme|placeholder|example|dummy|fake|todo|none|null|undefined)/i;
+const PLACEHOLDER = /^(?:your[_-]|xxx+|\*+|changeme|placeholder|example|dummy|fake|todo|none|null|undefined)/i;
 
 interface Claim {
   start: number;
@@ -121,6 +123,24 @@ function isPlaceholder(value: string): boolean {
   return PLACEHOLDER.test(value) || /example/i.test(value);
 }
 
+// A loopback host means the credential only ever reaches a local database,
+// so committing it leaks nothing. CI fixtures and example configs are full
+// of these, and blocking them is what gets a gate --no-verify'd.
+function isLoopbackHost(hostWithPort: string): boolean {
+  // Two shapes reach here: `host:5432` and the bracketed IPv6 form
+  // `[::1]:5432`. Splitting on ':' without unbracketing first turns the
+  // IPv6 form into an empty host.
+  const bracketed = /^\[([^\]]+)\]/.exec(hostWithPort);
+  const host = (bracketed?.[1] ?? hostWithPort.split(':')[0] ?? '').toLowerCase();
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    /^127\./.test(host) ||
+    host === '0.0.0.0' ||
+    host === '::1'
+  );
+}
+
 function scanLine(path: string, lineNumber: number, content: string): Finding[] {
   const findings: Finding[] = [];
   const claims: Claim[] = [];
@@ -134,9 +154,22 @@ function scanLine(path: string, lineNumber: number, content: string): Finding[] 
         continue;
       }
       claims.push({ start, end });
-      const secret = match[1] ?? match[0];
+      // For db-url the capture groups are the password and host; the
+      // evidence stays the whole URL so the finding shows the shape.
+      const secret = pattern.rule === 'secret.db-url' ? match[0] : (match[1] ?? match[0]);
       if (pattern.rule === 'secret.generic-credential' && isPlaceholder(secret)) {
         continue;
+      }
+      // A database URL is only a finding when it carries a real credential
+      // to a real host. `postgres://user:placeholder@localhost` in a CI
+      // fixture is not a leak — found dogfooding, where exactly that line
+      // blocked a range scan of a clean repo.
+      if (pattern.rule === 'secret.db-url') {
+        const password = match[1] ?? '';
+        const host = match[2] ?? '';
+        if (isPlaceholder(password) || isLoopbackHost(host)) {
+          continue;
+        }
       }
       findings.push({
         severity: pattern.severity,

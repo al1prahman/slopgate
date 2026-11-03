@@ -68,8 +68,33 @@ describe('scanSecrets', () => {
 
   it('detects database URLs with inline credentials', () => {
     expect(
-      rulesFor(fileWith('a.ts', 'DATABASE_URL=postgres://admin:s3cretpw@db.internal:5432/prod')),
+      rulesFor(fileWith('a.ts', 'DATABASE_URL=postgres://admin:s3cur3p4ss@db.internal:5432/prod')),
     ).toContain('secret.db-url');
+  });
+
+  it('does not flag a placeholder password in a database URL', () => {
+    // Found dogfooding: a CI fixture with
+    // `postgresql://postgres:placeholder@localhost:5432/postgres` blocked a
+    // range scan of an otherwise clean repo. No credential, no finding.
+    for (const line of [
+      'DATABASE_URL: postgresql://postgres:placeholder@localhost:5432/postgres',
+      'DATABASE_URL: postgres://admin:changeme@db.internal:5432/prod',
+      'DATABASE_URL: postgres://admin:***@db.internal:5432/prod',
+      'DATABASE_URL: postgres://admin:your-password@db.internal:5432/prod',
+    ]) {
+      expect(rulesFor(fileWith('ci.yml', line))).not.toContain('secret.db-url');
+    }
+  });
+
+  it('does not flag a database URL pointing at a loopback host', () => {
+    for (const line of [
+      'DATABASE_URL: postgres://postgres:realpass@localhost:5432/db',
+      'DATABASE_URL: postgres://postgres:realpass@127.0.0.1:5432/db',
+      'DATABASE_URL: postgres://postgres:realpass@0.0.0.0:5432/db',
+      'DATABASE_URL: postgres://postgres:realpass@[::1]:5432/db',
+    ]) {
+      expect(rulesFor(fileWith('ci.yml', line))).not.toContain('secret.db-url');
+    }
   });
 
   it('detects npm tokens', () => {
