@@ -4,6 +4,15 @@ All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-11-03
+
+### Fixed
+
+- `--version` and the SARIF driver version reported a stale `0.1.0` in the
+  1.0.0 tarball: the version was a hardcoded literal in `src/version.ts`
+  that the release bump missed. It is now derived from `package.json` at
+  import time, so the two can never drift again. 1.0.0 is deprecated on npm.
+
 ## [1.0.0] — 2026-11-02
 
 First release. A git-native security gate that blocks AI coding agents from
@@ -51,4 +60,5 @@ package). The installed command stays `slopgate`.
   `--offline`, `--quiet`), `cache stats|clear`.
 - Exit codes: 0 clean, 1 warnings, 2 blocked.
 
+[1.0.1]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.1
 [1.0.0]: https://github.com/al1prahman/slopgate/releases/tag/v1.0.0
