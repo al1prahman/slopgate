@@ -16,7 +16,7 @@ Vibe-coding agents generate dependencies and credentials at machine speed with m
 2. **Fast or dead.** A pre-commit hook that takes > 2 s gets disabled with `--no-verify`. Speed is a feature.
 3. **Diff-scoped.** Only added lines. Lockfiles are never dependency-checked. Context and deleted lines are noise.
 4. **Fail-open on infrastructure, fail-closed on findings.** Registry outage warns; a real finding blocks.
-5. **Zero config to start.** `npx slopgate init` and done. Config exists for suppression, not for setup.
+5. **Zero config to start.** `npx @al1prahman/slopgate init` and done. Config exists for suppression, not for setup.
 
 ## Target user
 
@@ -30,7 +30,7 @@ Vibe-coding agents generate dependencies and credentials at machine speed with m
 
 ## Desired behavior
 
-1. `npx slopgate init` installs hooks and writes `.slopgate.yml` in under 3 s.
+1. `npx @al1prahman/slopgate init` installs hooks and writes `.slopgate.yml` in under 3 s.
 2. On commit: extract added lines → run detectors → print findings → exit 0/1/2.
 3. A dependency that does not exist in the registry is **blocked** with the nearest real package suggested.
 4. A dependency that exists but is ≤ 2 edits from a popular package and younger than 90 days is **warned** as a probable typosquat.
@@ -131,7 +131,7 @@ Local-first. No server in MVP. Distribution via npm + GitHub. Cache stays on the
 
 ## Success criteria
 
-- `npx slopgate init` → hook active in < 3 s
+- `npx @al1prahman/slopgate init` → hook active in < 3 s
 - Commit with hallucinated dep in `requirements.txt` → blocked with correct suggestion
 - Commit with `sk-ant-...` → blocked
 - Clean commit passes in < 2 s cold, < 100 ms warm

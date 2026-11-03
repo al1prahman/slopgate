@@ -18,7 +18,7 @@
   pass_filenames: false
   require_serial: true
   stages: [pre-commit]
-  additional_dependencies: [slopgate]
+  additional_dependencies: ['@al1prahman/slopgate']
 
 - id: slopgate-push
   name: slopgate (pushed range)
@@ -28,4 +28,4 @@
   pass_filenames: false
   require_serial: true
   stages: [pre-push]
-  additional_dependencies: [slopgate]
+  additional_dependencies: ['@al1prahman/slopgate']

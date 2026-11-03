@@ -8,11 +8,11 @@ Build `slopgate`: a TypeScript CLI distributed via npm that installs git hooks a
 
 ## Product Vision
 
-One command (`npx slopgate init`) gives any repo a fast, local, free security gate tuned for agent-authored code. Findings are decisive (BLOCK/WARN with inline suggestions), the warm path is < 100 ms, and false positives are treated as product failures.
+One command (`npx @al1prahman/slopgate init`) gives any repo a fast, local, free security gate tuned for agent-authored code. Findings are decisive (BLOCK/WARN with inline suggestions), the warm path is < 100 ms, and false positives are treated as product failures.
 
 ## User Experience Goals
 
-- `npx slopgate init` → hooks + config in < 3 s
+- `npx @al1prahman/slopgate init` → hooks + config in < 3 s
 - Bad commit: colored findings, one line each, suggestion inline, exit 2
 - Clean commit: silent pass, < 2 s cold / < 100 ms warm
 - `--json` and `--format sarif` for CI

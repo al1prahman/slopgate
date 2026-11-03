@@ -53,7 +53,7 @@ runs:
             RANGE="HEAD~1..HEAD"
           fi
         fi
-        npx --yes "slopgate@$VERSION" scan --range "$RANGE" --mode "$MODE" --format sarif > results.sarif
+        npx --yes "@al1prahman/slopgate@$VERSION" scan --range "$RANGE" --mode "$MODE" --format sarif > results.sarif
         code=$?
         set -e
         echo "code=$code" >> "$GITHUB_OUTPUT"

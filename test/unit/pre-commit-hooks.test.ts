@@ -39,7 +39,7 @@ describe('.pre-commit-hooks.yaml', () => {
 
   it('installs slopgate from npm via additional_dependencies', () => {
     for (const hook of hooks) {
-      expect(hook.additional_dependencies).toContain('slopgate');
+      expect(hook.additional_dependencies).toContain('@al1prahman/slopgate');
     }
   });
 

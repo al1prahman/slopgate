@@ -10,6 +10,10 @@ First release. A git-native security gate that blocks AI coding agents from
 committing hallucinated dependencies (slopsquatting) and leaked secrets, in
 one command. Node ≥ 22.13, zero native dependencies (built-in `node:sqlite`).
 
+Published as **`@al1prahman/slopgate`** (scoped — the unscoped `slopgate`
+name is blocked by npm's similarity policy against the existing `slop-gate`
+package). The installed command stays `slopgate`.
+
 ### Added
 
 - **Secret scanning** on added lines only — provider key patterns (Anthropic,

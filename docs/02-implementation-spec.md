@@ -144,7 +144,7 @@ TypeScript · Node ≥ 20 · commander · better-sqlite3 · p-limit · vitest ·
 
 ## Acceptance criteria / done means (MVP)
 
-- [ ] `npx slopgate init` creates hooks + `.slopgate.yml` in a fresh repo in < 3 s
+- [ ] `npx @al1prahman/slopgate init` creates hooks + `.slopgate.yml` in a fresh repo in < 3 s
 - [ ] Commit adding `reqeusts` to `requirements.txt` → exit 2, output suggests `requests`
 - [ ] Commit adding `sk-ant-api03-…` to any file → exit 2
 - [ ] Clean commit → exit 0; cold scan < 2 s, warm < 100 ms

@@ -22,7 +22,7 @@ Vibe coding (Claude Code, Codex, OpenClaw, Cursor) is mainstream. The security t
 
 ## Initial scope intuition
 
-- One command install: `npx slopgate init`
+- One command install: `npx @al1prahman/slopgate init`
 - Runs in `pre-commit` / `pre-push` / GitHub Action
 - Must be fast (< 2 s warm) or people will disable the hook
 - MVP ecosystems: npm + PyPI

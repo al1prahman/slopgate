@@ -36,7 +36,7 @@ Existing tools don't cover this: `gitleaks`/`trufflehog` find secrets genericall
 
 ```bash
 # inside any repo
-npx slopgate init
+npx @al1prahman/slopgate init
 
 # commit as usual — the hook does the rest
 git commit -m "add fetch util"
