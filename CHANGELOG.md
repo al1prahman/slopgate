@@ -2,7 +2,46 @@
 
 All notable changes to slopgate are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.9] — 2026-11-03
+
+### Fixed
+
+Five false positives and one hang, all found dogfooding a Python monorepo
+(`curio-ai`, 30 commits, 61 `.py` files):
+
+- `secret.generic-credential` no longer flags a settings attribute read —
+  `api_key=settings.QDRANT_API_KEY`, `self._api_key = settings.LLM_API_KEY`.
+  The line reads from configuration; there is no literal on it.
+- `secret.generic-credential` no longer flags a shell interpolation default —
+  `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-curio_dev_password}`.
+- `secret.generic-credential` no longer runs inside example env files
+  (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`,
+  `.env.defaults`). A real `.env` is still scanned, and the specific
+  key-format rules (`secret.anthropic-key` and friends) still apply
+  everywhere.
+- `secret.high-entropy` no longer runs on lockfiles — `uv.lock`,
+  `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`,
+  `poetry.lock`, `Gemfile.lock`, `go.sum`, `composer.lock`,
+  `packages.lock`. A real repo's `uv.lock` alone produced 25 warnings; the
+  rule is hash soup in there. The same heuristic still fires in source
+  files.
+- `secret.high-entropy` no longer treats a URL as a secret. A Pydantic
+  settings default (`DATABASE_URL: str = "postgresql+asyncpg://…"`) is a
+  connection string, not a credential.
+
+### Performance
+
+- One registry call per unique package instead of one per candidate. A
+  Python repo imports the same package from many files — 252 candidates
+  for 20 unique packages meant 232 wasted round-trips. Candidates that
+  share a package are now checked together, with up to 8 in flight, and
+  every candidate is still judged individually so findings are unchanged.
+- Registry responses are now drained. An unconsumed body holds its socket:
+  undici cannot release the connection, so the process waited for the peer
+  to close it. A cold scan of the same repo took 31 seconds to *exit*
+  while reporting 1 second of work — now 2.5 seconds end to end.
 
 ## [1.0.8] — 2026-11-03
 

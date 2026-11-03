@@ -113,6 +113,31 @@ describe('createPypiClient', () => {
     expect(result.exists).toBe(true);
     expect(result.createdAt).toBe('2026-09-15T00:00:00.000Z');
   });
+
+  // An unconsumed body holds its socket: undici cannot release the
+  // connection back to the pool, so the process waits for the peer to close
+  // it. Dogfooding a Python repo turned a 1s cold scan into a 31s command
+  // this way — 19 of 20 checks were status-only.
+  for (const [label, makeClient] of [
+    ['npm', (fetchFn: typeof fetch) => createNpmClient('https://registry.npmjs.org', fetchFn)],
+    ['pypi', (fetchFn: typeof fetch) => createPypiClient('https://pypi.org/pypi', fetchFn)],
+  ] as const) {
+    it(`drains the response body on a status-only ${label} check`, async () => {
+      const cancel = vi.fn(async () => undefined);
+      const body = new ReadableStream({ cancel });
+      const fetchFn = vi.fn(async () => new Response(body, { status: 200 })) as unknown as typeof fetch;
+      await makeClient(fetchFn).check('some-package');
+      expect(cancel).toHaveBeenCalled();
+    });
+
+    it(`drains the response body on a ${label} 404`, async () => {
+      const cancel = vi.fn(async () => undefined);
+      const body = new ReadableStream({ cancel });
+      const fetchFn = vi.fn(async () => new Response(body, { status: 404 })) as unknown as typeof fetch;
+      await makeClient(fetchFn).check('missing-package');
+      expect(cancel).toHaveBeenCalled();
+    });
+  }
 });
 
 describe('RegistryCache', () => {

@@ -79,6 +79,13 @@ function typosquatFinding(
   };
 }
 
+// Registry checks are I/O-bound. A Python repo imports the same package
+// from many files: curio-ai produced 252 candidates for 20 unique packages,
+// and the serial loop paid a round-trip for every one — 55 seconds, 232 of
+// them wasted. Dedupe to one call per package, then keep a handful of
+// calls in flight.
+const REGISTRY_CONCURRENCY = 8;
+
 async function scanCandidates(
   candidates: readonly DepCandidate[],
   options: ScanOptions,
@@ -106,6 +113,8 @@ async function scanCandidates(
   const findings: Finding[] = [];
   let cacheHits = 0;
   const typosquat = config.deps.typosquat;
+  // An import with no alias entry may simply use a mapping we do not know —
+  // warn once per name instead of once per file.
   const warnedUnmapped = new Set<string>();
 
   const judge = (
@@ -148,6 +157,10 @@ async function scanCandidates(
   };
 
   try {
+    // One registry call per unique package, but every candidate still gets
+    // judged — a hallucinated dep imported from ten files reports ten
+    // findings, it just costs one round-trip.
+    const groups = new Map<string, DepCandidate[]>();
     for (const candidate of candidates) {
       if (
         config.deps.allowlist.includes(candidate.name) ||
@@ -156,41 +169,82 @@ async function scanCandidates(
       ) {
         continue;
       }
-      const client = clients[candidate.ecosystem];
-      const cached = cachedVerdicts.get(cacheKey(candidate.ecosystem, candidate.name));
+      const key = cacheKey(candidate.ecosystem, candidate.name);
+      const group = groups.get(key);
+      if (group) {
+        group.push(candidate);
+      } else {
+        groups.set(key, [candidate]);
+      }
+    }
+
+    const targetFor = (candidate: DepCandidate, createdAt: string | null): TyposquatTarget | null =>
+      typosquat.enabled && createdAt
+        ? findTyposquatTarget(candidate.name, candidate.ecosystem, typosquat.maxDistance)
+        : null;
+
+    const uncached: { key: string; group: DepCandidate[]; first: DepCandidate; target: TyposquatTarget | null }[] = [];
+    for (const [key, group] of groups) {
+      const cached = cachedVerdicts.get(key);
       if (cached) {
-        cacheHits += 1;
-        // Without a cached age the verdict cannot be judged — skip the
-        // baseline scan entirely rather than paying it for nothing.
-        const target =
-          typosquat.enabled && cached.createdAt
-            ? findTyposquatTarget(candidate.name, candidate.ecosystem, typosquat.maxDistance)
-            : null;
-        judge(candidate, cached.exists, cached.createdAt, target);
+        cacheHits += group.length;
+        for (const candidate of group) {
+          judge(candidate, cached.exists, cached.createdAt, targetFor(candidate, cached.createdAt));
+        }
         continue;
       }
       // Only look-alikes of popular packages need the packument body, so the
       // metadata flag is set exactly when the typosquat check could fire.
+      const first = group[0] as DepCandidate;
       const target = typosquat.enabled
-        ? findTyposquatTarget(candidate.name, candidate.ecosystem, typosquat.maxDistance)
+        ? findTyposquatTarget(first.name, first.ecosystem, typosquat.maxDistance)
         : null;
-      try {
-        const result = await client.check(candidate.name, { metadata: target !== null });
-        pendingWrites.push({
-          ecosystem: candidate.ecosystem,
-          name: candidate.name,
-          exists: result.exists,
-          createdAt: result.createdAt,
-        });
-        judge(candidate, result.exists, result.createdAt, target);
-      } catch {
-        findings.push({
-          severity: 'warn',
-          rule: candidate.source === 'import' ? 'import.registry-error' : 'dep.registry-error',
-          file: candidate.file,
-          line: candidate.line,
-          message: `Could not verify "${candidate.name}" — ${candidate.ecosystem} registry unreachable (fail-open)`,
-        });
+      uncached.push({ key, group, first, target });
+    }
+
+    const verdicts = new Map<string, { exists: boolean; createdAt: string | null } | null>();
+    for (let i = 0; i < uncached.length; i += REGISTRY_CONCURRENCY) {
+      const batch = uncached.slice(i, i + REGISTRY_CONCURRENCY);
+      await Promise.all(
+        batch.map(async ({ key, first, target }) => {
+          try {
+            const result = await clients[first.ecosystem].check(first.name, {
+              metadata: target !== null,
+            });
+            pendingWrites.push({
+              ecosystem: first.ecosystem,
+              name: first.name,
+              exists: result.exists,
+              createdAt: result.createdAt,
+            });
+            verdicts.set(key, result);
+          } catch {
+            verdicts.set(key, null);
+          }
+        }),
+      );
+    }
+
+    // Judge in candidate order so findings stay deterministic.
+    for (const { key, group } of uncached) {
+      const result = verdicts.get(key);
+      if (result === undefined) {
+        continue;
+      }
+      if (result === null) {
+        for (const candidate of group) {
+          findings.push({
+            severity: 'warn',
+            rule: candidate.source === 'import' ? 'import.registry-error' : 'dep.registry-error',
+            file: candidate.file,
+            line: candidate.line,
+            message: `Could not verify "${candidate.name}" — ${candidate.ecosystem} registry unreachable (fail-open)`,
+          });
+        }
+        continue;
+      }
+      for (const candidate of group) {
+        judge(candidate, result.exists, result.createdAt, targetFor(candidate, result.createdAt));
       }
     }
   } finally {

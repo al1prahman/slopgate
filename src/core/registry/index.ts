@@ -23,6 +23,19 @@ async function fetchRegistry(url: string, fetchFn: typeof fetch): Promise<Respon
   }
 }
 
+// An unconsumed response body holds its socket: undici cannot release the
+// connection back to the pool, so it stays open until the peer closes it —
+// dogfooding a Python repo turned a 1s scan into a 31s command because two
+// status-only responses were never drained. Cancel the body whenever the
+// packument is not being parsed.
+async function drainBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // A body that already errored or closed needs no draining.
+  }
+}
+
 // The packument body is only parsed for names already flagged as look-alikes
 // of popular packages, so status-only checks never pay the JSON.parse cost.
 async function createdAtFrom(
@@ -86,12 +99,14 @@ export function createNpmClient(baseUrl: string, fetchFn: typeof fetch = fetch):
       const url = `${trimTrailingSlash(baseUrl)}/${encoded}`;
       const response = await fetchRegistry(url, fetchFn);
       if (response.status === 200) {
-        return {
-          exists: true,
-          createdAt: options.metadata ? await createdAtFrom(response, npmCreatedAt) : null,
-        };
+        if (options.metadata) {
+          return { exists: true, createdAt: await createdAtFrom(response, npmCreatedAt) };
+        }
+        await drainBody(response);
+        return { exists: true, createdAt: null };
       }
       if (response.status === 404) {
+        await drainBody(response);
         return { exists: false, createdAt: null };
       }
       throw new Error(`npm registry returned HTTP ${response.status} for "${name}"`);
@@ -110,12 +125,14 @@ export function createPypiClient(baseUrl: string, fetchFn: typeof fetch = fetch)
       const url = `${trimTrailingSlash(baseUrl)}/${normalizePypiName(name)}/json`;
       const response = await fetchRegistry(url, fetchFn);
       if (response.status === 200) {
-        return {
-          exists: true,
-          createdAt: options.metadata ? await createdAtFrom(response, pypiCreatedAt) : null,
-        };
+        if (options.metadata) {
+          return { exists: true, createdAt: await createdAtFrom(response, pypiCreatedAt) };
+        }
+        await drainBody(response);
+        return { exists: true, createdAt: null };
       }
       if (response.status === 404) {
+        await drainBody(response);
         return { exists: false, createdAt: null };
       }
       throw new Error(`PyPI returned HTTP ${response.status} for "${name}"`);

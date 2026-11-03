@@ -490,6 +490,58 @@ describe('runScan — import scanning', () => {
     expect(finding!.message).toContain('import "bs4" (package "beautifulsoup4")');
   });
 
+  // A Python repo imports the same package from many files: curio-ai
+  // produced 252 candidates for 20 unique packages and paid a round-trip for
+  // every one — 55 seconds, 232 of them wasted.
+  it('makes one registry call per unique package, not per candidate', async () => {
+    const repo = importRepo({
+      'app/a.py': 'from bs4 import BeautifulSoup\n',
+      'app/b.py': 'from bs4 import BeautifulSoup\n',
+      'app/c.py': 'from bs4 import BeautifulSoup\n',
+    });
+
+    const fetchFn = registryFake(['beautifulsoup4']) as unknown as typeof fetch & {
+      mock: { calls: unknown[] };
+    };
+    const result = await runScan({
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn,
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    });
+
+    // Every import still reports — dedupe is about round-trips, not findings.
+    expect(result.findings.filter((f) => f.rule === 'import.not-found')).toHaveLength(3);
+    expect(fetchFn.mock.calls).toHaveLength(1);
+  });
+
+  it('reports every file on the cached path too', async () => {
+    const repo = importRepo({
+      'app/a.py': 'from bs4 import BeautifulSoup\n',
+      'app/b.py': 'from bs4 import BeautifulSoup\n',
+    });
+
+    const fetchFn = registryFake(['beautifulsoup4']) as unknown as typeof fetch & {
+      mockClear: () => void;
+      mock: { calls: unknown[] };
+    };
+    const options = {
+      repoRoot: repo,
+      staged: true,
+      config: defaultConfig(),
+      fetchFn,
+      cachePath: join(repo, '.slopgate', 'cache.db'),
+    };
+    await runScan(options);
+    fetchFn.mockClear();
+
+    const result = await runScan(options);
+
+    expect(result.findings.filter((f) => f.rule === 'import.not-found')).toHaveLength(2);
+    expect(fetchFn.mock.calls).toHaveLength(0);
+  });
+
   it('passes when an aliased import resolves to a real distribution', async () => {
     const repo = importRepo({ 'app/main.py': 'from bs4 import BeautifulSoup\n' });
 

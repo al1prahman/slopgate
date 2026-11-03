@@ -101,6 +101,67 @@ describe('scanSecrets', () => {
     }
   });
 
+  it('does not flag a settings attribute read as a credential', () => {
+    // Found dogfooding a Python repo: `api_key=settings.QDRANT_API_KEY`
+    // and `self._api_key = settings.LLM_API_KEY` both blocked. They read
+    // from configuration — there is no literal on the line.
+    for (const line of [
+      '            api_key=settings.QDRANT_API_KEY or None,',
+      '        self._api_key = settings.LLM_API_KEY',
+      'token = config.API_TOKEN',
+    ]) {
+      expect(rulesFor(fileWith('svc.py', line))).not.toContain('secret.generic-credential');
+    }
+  });
+
+  it('does not flag a shell interpolation default', () => {
+    // docker-compose.yml: `POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-curio_dev_password}`
+    const line = '      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-curio_dev_password}';
+    expect(rulesFor(fileWith('docker-compose.yml', line))).not.toContain(
+      'secret.generic-credential',
+    );
+  });
+
+  it('does not run the generic rule inside example env files', () => {
+    // .env.example exists to hold example values; the specific key-format
+    // rules still apply there.
+    for (const path of ['.env.example', 'backend/.env.sample', '.env.template']) {
+      expect(rulesFor(fileWith(path, 'POSTGRES_PASSWORD=curio_dev_password'))).not.toContain(
+        'secret.generic-credential',
+      );
+    }
+    // A real env file still gets flagged.
+    expect(rulesFor(fileWith('.env', 'POSTGRES_PASSWORD=curio_dev_password'))).toContain(
+      'secret.generic-credential',
+    );
+  });
+
+  it('does not run the entropy heuristic on lockfiles', () => {
+    // uv.lock is hash soup: 25 warnings on a real repo's lockfile alone.
+    // The real line is a package URL (high entropy from the domain and
+    // path) whose filename carries the trigger word "tokenizers".
+    const lockLine =
+      'sdist = { url = "https://files.pythonhosted.org/packages/e0/7c/tokenizers-0.23.3.tar.gz", hash = "sha256:cded33237c77caeef62944d32aa9a7ef42bdce2b3497e18d137e072a8c4be438", size = 385286 }';
+    for (const path of ['backend/uv.lock', 'package-lock.json', 'yarn.lock', 'Cargo.lock']) {
+      expect(rulesFor(fileWith(path, lockLine))).not.toContain('secret.high-entropy');
+    }
+    // The heuristic itself stays alive: a real high-entropy credential in a
+    // source file still warns, and the same line in a lockfile does not.
+    // (A bare token, not `name = value` — that shape belongs to the generic
+    // rule, which is precise enough to keep running on lockfiles.)
+    const credential = '# token rotation note Xk9mP2vQ7wLzR4tY8bN3cF6hJ1dG5sA0';
+    expect(rulesFor(fileWith('src/settings.py', credential))).toContain('secret.high-entropy');
+    expect(rulesFor(fileWith('uv.lock', credential))).not.toContain('secret.high-entropy');
+  });
+
+  it('does not treat a URL as a secret', () => {
+    // A Pydantic settings default:
+    // DATABASE_URL: str = "postgresql+asyncpg://curio:curio_dev_password@localhost:5432/curio_ai"
+    const line =
+      '    DATABASE_URL: str = "postgresql+asyncpg://curio:curio_dev_password@localhost:5432/curio_ai"';
+    expect(rulesFor(fileWith('config.py', line))).not.toContain('secret.high-entropy');
+  });
+
   it('detects npm tokens', () => {
     expect(rulesFor(fileWith('a.ts', 'npm_1234567890abcdef\u0067hijklmnopqrstuvwxyz'))).toContain(
       'secret.npm-token',

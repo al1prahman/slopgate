@@ -93,6 +93,16 @@ const CANDIDATE_TOKEN = /["'`]([^"'`\s]{20,})["'`]|(?<![A-Za-z0-9/_+.-])([A-Za-z
 const PLACEHOLDER =
   /^[[{<]?(?:your[\s_-]|xxx+|\*+|changeme|placeholder|example|dummy|fake|todo|none|null|undefined|redacted|n\/a)/i;
 
+// Machine-generated lockfiles are full of hashes and signed URLs; the
+// high-entropy heuristic is pure noise on them. The specific rules (real
+// key formats) still apply everywhere.
+const LOCKFILE =
+  /(?:^|\/)(?:uv\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|Gemfile\.lock|go\.sum|composer\.lock|packages\.lock)$/;
+
+// Example env files exist to hold example values, so the generic
+// credential rule is noise there. Specific key formats still apply.
+const EXAMPLE_ENV = /(?:^|\/)\.env\.(?:example|sample|template|dist|defaults)$/;
+
 interface Claim {
   start: number;
   end: number;
@@ -144,6 +154,30 @@ function isLoopbackHost(hostWithPort: string): boolean {
   );
 }
 
+// `settings.QDRANT_API_KEY`, `config.API_KEY` — an attribute path read from
+// configuration, not a literal. Found dogfooding: two Python service files
+// were blocked for exactly this. Real secrets do not look like `word.word`.
+function isVariableReference(value: string): boolean {
+  return /^[A-Za-z_]\w*(?:\.\w+)+$/.test(value);
+}
+
+// `${VAR:-default}` — the captured value is the fallback inside an
+// interpolation, not a literal someone typed.
+function isInsideShellInterpolation(line: string, start: number): boolean {
+  const before = line.slice(0, start);
+  const open = before.lastIndexOf('${');
+  if (open === -1) return false;
+  if (before.slice(open).includes('}')) return false;
+  return line.slice(start).includes('}');
+}
+
+// A URL is not a secret. Found dogfooding: a Pydantic settings default
+// (`DATABASE_URL: str = "postgresql+asyncpg://curio:curio_dev_password@..."`)
+// tripped the high-entropy rule on the whole URL.
+function looksLikeUrl(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+}
+
 function scanLine(path: string, lineNumber: number, content: string): Finding[] {
   const findings: Finding[] = [];
   const claims: Claim[] = [];
@@ -174,6 +208,20 @@ function scanLine(path: string, lineNumber: number, content: string): Finding[] 
           continue;
         }
       }
+      // The generic rule fires on anything shaped like `name: value`, which
+      // catches three non-secrets found dogfooding a Python repo: a settings
+      // attribute read (`api_key=settings.QDRANT_API_KEY`), a shell
+      // interpolation default (`${VAR:-curio_dev_password}`), and an example
+      // env file's example value.
+      if (pattern.rule === 'secret.generic-credential') {
+        if (
+          EXAMPLE_ENV.test(path) ||
+          isVariableReference(secret) ||
+          isInsideShellInterpolation(content, start)
+        ) {
+          continue;
+        }
+      }
       findings.push({
         severity: pattern.severity,
         rule: pattern.rule,
@@ -186,29 +234,37 @@ function scanLine(path: string, lineNumber: number, content: string): Finding[] 
   }
 
   if (GENERIC_NAME.test(content)) {
-    CANDIDATE_TOKEN.lastIndex = 0;
-    for (const match of content.matchAll(CANDIDATE_TOKEN)) {
-      const token = match[1] ?? match[2];
-      if (!token || token.length < 20) {
-        continue;
+    // Lockfiles are machine-generated hash soup; URLs are not secrets.
+    // Both tripped the heuristic on a real repo's uv.lock and a settings
+    // default respectively.
+    if (!LOCKFILE.test(path)) {
+      CANDIDATE_TOKEN.lastIndex = 0;
+      for (const match of content.matchAll(CANDIDATE_TOKEN)) {
+        const token = match[1] ?? match[2];
+        if (!token || token.length < 20) {
+          continue;
+        }
+        if (looksLikeUrl(token)) {
+          continue;
+        }
+        const start = match.index + (match[0].length - token.length);
+        const end = start + token.length;
+        if (overlaps(claims, start, end) || isPlaceholder(token)) {
+          continue;
+        }
+        if (shannonEntropy(token) < 4.5) {
+          continue;
+        }
+        claims.push({ start, end });
+        findings.push({
+          severity: 'warn',
+          rule: 'secret.high-entropy',
+          file: path,
+          line: lineNumber,
+          message: 'High-entropy string assigned to a credential-like name',
+          evidence: redactSecret(token),
+        });
       }
-      const start = match.index + (match[0].length - token.length);
-      const end = start + token.length;
-      if (overlaps(claims, start, end) || isPlaceholder(token)) {
-        continue;
-      }
-      if (shannonEntropy(token) < 4.5) {
-        continue;
-      }
-      claims.push({ start, end });
-      findings.push({
-        severity: 'warn',
-        rule: 'secret.high-entropy',
-        file: path,
-        line: lineNumber,
-        message: 'High-entropy string assigned to a credential-like name',
-        evidence: redactSecret(token),
-      });
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@al1prahman/slopgate",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Git-native security gate that blocks AI coding agents from shipping hallucinated dependencies and leaked secrets",
   "type": "module",
   "bin": {
