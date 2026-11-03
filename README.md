@@ -4,11 +4,11 @@
 
 `slopgate` is a git-native security gate built for the vibe-coding era. It scans agent-authored diffs *before* they land — blocking package names that don't exist (slopsquatting) and credentials that shouldn't be committed.
 
-[![CI](https://github.com/<you>/slopgate/actions/workflows/ci.yml/badge.svg)](https://github.com/<you>/slopgate/actions)
-[![npm version](https://img.shields.io/npm/v/slopgate.svg)](https://www.npmjs.com/package/slopgate)
+[![CI](https://github.com/al1prahman/slopgate/actions/workflows/ci.yml/badge.svg)](https://github.com/al1prahman/slopgate/actions)
+[![npm version](https://img.shields.io/npm/v/@al1prahman%2Fslopgate.svg)](https://www.npmjs.com/package/@al1prahman/slopgate)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF + agent-commit detection done — 250 tests green, published to npm pending. Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
+> **Status:** MVP + import scanning + typosquat warnings + GitHub Action/SARIF + agent-commit detection done — 252 tests green, [published to npm](https://www.npmjs.com/package/@al1prahman/slopgate). Requires Node ≥ 22.13 (uses the built-in `node:sqlite` module — zero native dependencies).
 
 ---
 
